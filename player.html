@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مسابقة حروف - المتسابق</title>
+    <meta name="description" content="مسابقة حروف عربية تفاعلية - صفحة المتسابق">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="sr-announcer" role="status" aria-live="assertive" aria-atomic="true" class="sr-only"></div>
+
+    <!-- Join Screen -->
+    <section id="join-screen" class="screen active" aria-label="الانضمام للمسابقة">
+        <div class="container">
+            <div class="logo-area">
+                <div class="logo-icon" aria-hidden="true">🎮</div>
+                <h1>مسابقة حروف</h1>
+                <p class="subtitle">انضم إلى غرفة المسابقة</p>
+            </div>
+
+            <div class="join-form">
+                <div class="field">
+                    <label for="room-code-input">رمز الغرفة</label>
+                    <input type="text" id="room-code-input" placeholder="أدخل رمز الغرفة" maxlength="5"
+                           style="text-align:center; font-size:1.5rem; letter-spacing:0.3em; text-transform:uppercase;" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label for="player-name-input">اسمك</label>
+                    <input type="text" id="player-name-input" placeholder="أدخل اسمك" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label>اختر فريقك</label>
+                    <div class="team-select-btns">
+                        <button class="btn team-select-btn team1-select" id="select-team1" data-team="1">
+                            <span id="team1-label">الفريق الأول</span>
+                        </button>
+                        <button class="btn team-select-btn team2-select" id="select-team2" data-team="2">
+                            <span id="team2-label">الفريق الثاني</span>
+                        </button>
+                    </div>
+                    <input type="hidden" id="selected-team" value="">
+                </div>
+                <div id="join-error" class="error-msg" hidden></div>
+                <button id="join-btn" class="btn btn-primary btn-lg" style="display:block; width:100%; margin-top:1.5rem;">
+                    🚀 انضمام
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Waiting Screen -->
+    <section id="waiting-screen" class="screen" aria-label="انتظار بدء المسابقة">
+        <div class="container" style="text-align:center;">
+            <div class="logo-icon" aria-hidden="true" style="font-size:4rem;">⏳</div>
+            <h2>في انتظار بدء المسابقة</h2>
+            <p class="subtitle">أنت في فريق: <strong id="my-team-name">---</strong></p>
+            <div class="waiting-dots">
+                <span></span><span></span><span></span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Player Game Screen -->
+    <section id="player-game-screen" class="screen" aria-label="شاشة اللعب">
+        <div class="container">
+            <header class="game-header">
+                <div class="game-info">
+                    <span class="current-letter-badge" id="p-current-letter"></span>
+                    <span class="question-counter" id="p-question-counter">السؤال 1 من 10</span>
+                </div>
+                <div class="scoreboard scoreboard-sm">
+                    <div class="score-item team1-score">
+                        <span class="score-team-name" id="p-team1-name">الفريق 1</span>
+                        <span class="score-value" id="p-team1-score">0</span>
+                    </div>
+                    <div class="score-divider">:</div>
+                    <div class="score-item team2-score">
+                        <span class="score-value" id="p-team2-score">0</span>
+                        <span class="score-team-name" id="p-team2-name">الفريق 2</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="question-area" aria-live="polite">
+                <div class="question-card">
+                    <h3 class="question-label">السؤال:</h3>
+                    <p class="question-text" id="p-question-text"></p>
+                </div>
+            </div>
+
+            <div class="answer-area" id="p-answer-area" hidden>
+                <div class="answer-card">
+                    <h3 class="answer-label">الجواب:</h3>
+                    <p class="answer-text" id="p-answer-text"></p>
+                </div>
+            </div>
+
+            <!-- Big Buzzer -->
+            <div id="p-buzzer-area">
+                <button class="big-buzzer" id="p-buzzer-btn">
+                    <span class="buzzer-icon">🔔</span>
+                    <span class="buzzer-label">اضغط للإجابة!</span>
+                </button>
+            </div>
+
+            <!-- Buzzer Result -->
+            <div class="buzzer-result" id="p-buzzer-result" hidden>
+                <p id="p-buzzer-result-text"></p>
+            </div>
+
+            <!-- Status Message -->
+            <div class="player-status" id="p-status" hidden>
+                <p id="p-status-text"></p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Player Letter Choice Screen -->
+    <section id="player-letter-screen" class="screen" aria-label="اختيار الحرف">
+        <div class="container">
+            <header class="screen-header">
+                <h2>🎉 أحسنت! اختر الحرف التالي</h2>
+                <p class="subtitle">فريقك أجاب إجابة صحيحة - اختر حرفاً للسؤال القادم</p>
+            </header>
+
+            <div class="scoreboard">
+                <div class="score-item team1-score">
+                    <span class="score-team-name" id="pl-team1-name">الفريق 1</span>
+                    <span class="score-value" id="pl-team1-score">0</span>
+                </div>
+                <div class="score-divider">:</div>
+                <div class="score-item team2-score">
+                    <span class="score-value" id="pl-team2-score">0</span>
+                    <span class="score-team-name" id="pl-team2-name">الفريق 2</span>
+                </div>
+            </div>
+
+            <div id="p-letters-grid" class="letters-grid" role="group" aria-label="حروف الهجاء"></div>
+        </div>
+    </section>
+
+    <!-- Player Waiting for Letter -->
+    <section id="player-wait-letter-screen" class="screen" aria-label="انتظار اختيار الحرف">
+        <div class="container" style="text-align:center;">
+            <div class="logo-icon" aria-hidden="true" style="font-size:4rem;">⏳</div>
+            <h2 id="wait-letter-title">الفريق الآخر يختار الحرف...</h2>
+            <div class="waiting-dots"><span></span><span></span><span></span></div>
+        </div>
+    </section>
+
+    <!-- Player Results Screen -->
+    <section id="player-results-screen" class="screen" aria-label="النتائج">
+        <div class="container results-container">
+            <div class="results-icon" id="p-results-icon">🏆</div>
+            <h2 id="p-results-title" class="results-title"></h2>
+            <p id="p-results-subtitle" class="results-subtitle"></p>
+            <div class="results-scores">
+                <div class="result-card team1-result" id="p-result-team1">
+                    <span class="result-team-name" id="p-result-team1-name">الفريق 1</span>
+                    <span class="result-score" id="p-result-team1-score">0</span>
+                    <span class="result-label">نقاط</span>
+                </div>
+                <div class="result-card team2-result" id="p-result-team2">
+                    <span class="result-team-name" id="p-result-team2-name">الفريق 2</span>
+                    <span class="result-score" id="p-result-team2-score">0</span>
+                    <span class="result-label">نقاط</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="player.js"></script>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مسابقة حروف - المسؤول</title>
+    <meta name="description" content="مسابقة حروف عربية تفاعلية - لوحة تحكم المسؤول">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Screen Reader Announcer -->
+    <div id="sr-announcer" role="status" aria-live="assertive" aria-atomic="true" class="sr-only"></div>
+
+    <!-- Setup Screen -->
+    <section id="setup-screen" class="screen active" aria-label="إعداد المسابقة">
+        <div class="container">
+            <div class="logo-area">
+                <div class="logo-icon" aria-hidden="true">🏆</div>
+                <h1>مسابقة حروف</h1>
+                <p class="subtitle">أنشئ غرفة مسابقة وشارك الرابط مع المتسابقين</p>
+            </div>
+
+            <div class="teams-setup">
+                <fieldset class="team-card team1-card">
+                    <legend>الفريق الأول</legend>
+                    <div class="field">
+                        <label for="team1-name">اسم الفريق</label>
+                        <input type="text" id="team1-name" placeholder="أدخل اسم الفريق" required autocomplete="off">
+                    </div>
+                </fieldset>
+
+                <div class="vs-badge" aria-hidden="true">VS</div>
+
+                <fieldset class="team-card team2-card">
+                    <legend>الفريق الثاني</legend>
+                    <div class="field">
+                        <label for="team2-name">اسم الفريق</label>
+                        <input type="text" id="team2-name" placeholder="أدخل اسم الفريق" required autocomplete="off">
+                    </div>
+                </fieldset>
+            </div>
+
+            <div class="field" style="max-width: 400px; margin: 0 auto 1.5rem;">
+                <label for="max-questions">عدد الأسئلة</label>
+                <select id="max-questions">
+                    <option value="5">5 أسئلة</option>
+                    <option value="10" selected>10 أسئلة</option>
+                    <option value="15">15 سؤال</option>
+                    <option value="20">20 سؤال</option>
+                    <option value="28">28 سؤال (جميع الحروف)</option>
+                </select>
+            </div>
+
+            <button id="create-room-btn" class="btn btn-primary btn-lg" style="display:block; width:100%; max-width:400px; margin:0 auto;">
+                🚀 إنشاء غرفة المسابقة
+            </button>
+        </div>
+    </section>
+
+    <!-- Lobby Screen -->
+    <section id="lobby-screen" class="screen" aria-label="غرفة الانتظار">
+        <div class="container">
+            <div class="logo-area">
+                <div class="logo-icon" aria-hidden="true">📡</div>
+                <h2>غرفة الانتظار</h2>
+                <p class="subtitle">شارك رمز الغرفة مع المتسابقين للانضمام</p>
+            </div>
+
+            <div class="room-code-area">
+                <p class="room-code-label">رمز الغرفة</p>
+                <div class="room-code" id="room-code-display">-----</div>
+                <button class="btn btn-secondary" id="copy-code-btn">📋 نسخ الرمز</button>
+                <button class="btn btn-secondary" id="copy-link-btn" style="margin-top:0.5rem;">🔗 نسخ رابط الانضمام</button>
+                <div id="network-link-area" class="network-link-area" hidden>
+                    <p class="network-label">رابط الانضمام (أرسله للمتسابقين):</p>
+                    <a id="network-link-display" class="network-link" href="#" target="_blank" dir="ltr">---</a>
+                </div>
+            </div>
+
+            <div class="players-list-area">
+                <h3>المتسابقون المتصلون</h3>
+                <div id="players-list" class="players-list">
+                    <p class="no-players">في انتظار انضمام المتسابقين...</p>
+                </div>
+            </div>
+
+            <button id="start-game-btn" class="btn btn-primary btn-lg" style="display:block; width:100%; max-width:400px; margin:1.5rem auto 0;">
+                ▶ بدء المسابقة
+            </button>
+        </div>
+    </section>
+
+    <!-- Letter Selection Screen -->
+    <section id="letter-screen" class="screen" aria-label="اختيار الحرف">
+        <div class="container">
+            <header class="screen-header">
+                <h2 id="letter-screen-title">اختر حرفاً</h2>
+                <p class="subtitle" id="letter-screen-subtitle">اختر حرفاً للسؤال التالي</p>
+            </header>
+
+            <div class="scoreboard" aria-label="لوحة النتائج">
+                <div class="score-item team1-score">
+                    <span class="score-team-name" id="score-team1-name">الفريق 1</span>
+                    <span class="score-value" id="score-team1-value">0</span>
+                </div>
+                <div class="score-divider" aria-hidden="true">:</div>
+                <div class="score-item team2-score">
+                    <span class="score-value" id="score-team2-value">0</span>
+                    <span class="score-team-name" id="score-team2-name">الفريق 2</span>
+                </div>
+            </div>
+
+            <div class="question-progress" id="question-progress"></div>
+
+            <div id="letters-grid" class="letters-grid" role="group" aria-label="حروف الهجاء العربية">
+                <!-- Letters will be generated by JS -->
+            </div>
+
+            <button class="btn btn-secondary" id="end-game-early-btn" style="display:block; margin:1.5rem auto 0;">
+                🏁 إنهاء المسابقة
+            </button>
+        </div>
+    </section>
+
+    <!-- Game Screen -->
+    <section id="game-screen" class="screen" aria-label="شاشة اللعب">
+        <div class="container">
+            <header class="game-header">
+                <div class="game-info">
+                    <span class="current-letter-badge" id="current-letter-display" aria-label="الحرف الحالي"></span>
+                    <span class="question-counter" id="question-counter">السؤال 1 من 10</span>
+                </div>
+                <div class="scoreboard scoreboard-sm" aria-label="لوحة النتائج">
+                    <div class="score-item team1-score">
+                        <span class="score-team-name" id="game-team1-name">الفريق 1</span>
+                        <span class="score-value" id="game-team1-score">0</span>
+                    </div>
+                    <div class="score-divider" aria-hidden="true">:</div>
+                    <div class="score-item team2-score">
+                        <span class="score-value" id="game-team2-score">0</span>
+                        <span class="score-team-name" id="game-team2-name">الفريق 2</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="question-area" aria-live="polite">
+                <div class="question-card">
+                    <h3 class="question-label">السؤال:</h3>
+                    <p class="question-text" id="question-text"></p>
+                </div>
+            </div>
+
+            <div class="answer-area" id="answer-area" hidden>
+                <div class="answer-card">
+                    <h3 class="answer-label">الجواب:</h3>
+                    <p class="answer-text" id="answer-text"></p>
+                </div>
+            </div>
+
+            <div class="waiting-buzz" id="waiting-buzz">
+                <p class="waiting-text">⏳ في انتظار ضغط البازر من المتسابقين...</p>
+            </div>
+
+            <div class="buzzer-result" id="buzzer-result" hidden aria-live="assertive">
+                <p id="buzzer-result-text"></p>
+            </div>
+
+            <div class="host-controls" id="host-controls" hidden>
+                <h3 class="sr-only">أدوات المسؤول</h3>
+                <button class="btn btn-show-answer" id="btn-show-answer">
+                    👁 إظهار الجواب
+                </button>
+                <button class="btn btn-correct" id="btn-correct">
+                    ✅ إجابة صحيحة
+                </button>
+                <button class="btn btn-wrong" id="btn-wrong">
+                    ❌ إجابة خاطئة
+                </button>
+                <button class="btn btn-skip" id="btn-skip">
+                    ⏭ تخطي السؤال
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Results Screen -->
+    <section id="results-screen" class="screen" aria-label="نتائج المسابقة">
+        <div class="container results-container">
+            <div class="results-icon" aria-hidden="true" id="results-icon">🏆</div>
+            <h2 id="results-title" class="results-title"></h2>
+            <p id="results-subtitle" class="results-subtitle"></p>
+
+            <div class="results-scores">
+                <div class="result-card team1-result" id="result-team1">
+                    <span class="result-team-name" id="result-team1-name">الفريق 1</span>
+                    <span class="result-score" id="result-team1-score">0</span>
+                    <span class="result-label">نقاط</span>
+                </div>
+                <div class="result-card team2-result" id="result-team2">
+                    <span class="result-team-name" id="result-team2-name">الفريق 2</span>
+                    <span class="result-score" id="result-team2-score">0</span>
+                    <span class="result-label">نقاط</span>
+                </div>
+            </div>
+
+            <div class="results-actions">
+                <button class="btn btn-primary btn-lg" id="btn-new-game">
+                    🔄 مسابقة جديدة
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
