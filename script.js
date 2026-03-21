@@ -1,8 +1,8 @@
-/* ===== مسابقة حروف - Host Logic ===== */
+/* ===== مسابقة حروف - Host Logic (Two Sections) ===== */
 
 // ===== Question Registry =====
 const allQuestions = {};
-const usedQuestionIndices = {}; // track used questions per letter
+const usedQuestionIndices = {};
 
 function registerLetterQuestions(letter, questions) {
     allQuestions[letter] = questions;
@@ -33,17 +33,21 @@ try {
 // ===== Game State =====
 const state = {
     roomCode: '',
+    currentSection: 1, // 1 = general, 2 = teams
     team1: { name: '', score: 0 },
     team2: { name: '', score: 0 },
     players: [],
+    playerScores: {},
     currentLetter: '',
     currentQuestion: null,
     questionCount: 0,
-    maxQuestions: 10,
+    maxQuestions: 10, // for section 2 only
     buzzedTeam: null,
+    buzzedPlayerName: '',
     secondChance: false,
     usedLetters: new Set(),
-    choosingTeam: null, // which team picks the next letter
+    usedLettersSection1: new Set(),
+    choosingTeam: null,
     gameActive: false
 };
 
@@ -54,6 +58,7 @@ const screens = {
     lobby: $('lobby-screen'),
     letter: $('letter-screen'),
     game: $('game-screen'),
+    transition: $('section-transition-screen'),
     results: $('results-screen')
 };
 
@@ -120,6 +125,49 @@ function playWinnerSound() {
     });
 }
 
+function playApplauseSound() {
+    // Simulate applause with noise bursts
+    try {
+        const ctx = getAudioCtx();
+        const duration = 3;
+        const bufferSize = ctx.sampleRate * duration;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < bufferSize; i++) {
+            const t = i / ctx.sampleRate;
+            const envelope = Math.sin(Math.PI * t / duration) * 0.3;
+            // Random clapping bursts
+            const clap = (Math.random() * 2 - 1) * envelope;
+            data[i] = clap * (0.5 + 0.5 * Math.sin(t * 8));
+        }
+
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 2000;
+        filter.Q.value = 0.5;
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.4, ctx.currentTime);
+
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        source.start();
+    } catch (e) {}
+}
+
+function playLoseSound() {
+    // Sad descending tones
+    playTone(440, 0.3, 'sine', 0.15);
+    setTimeout(() => playTone(370, 0.3, 'sine', 0.15), 300);
+    setTimeout(() => playTone(330, 0.3, 'sine', 0.15), 600);
+    setTimeout(() => playTone(262, 0.5, 'sine', 0.15), 900);
+}
+
 // ===== Load Letter Questions =====
 function loadLetterQuestions(letter) {
     return new Promise((resolve, reject) => {
@@ -151,7 +199,6 @@ function getRandomQuestion(letter) {
     }
 
     if (available.length === 0) {
-        // All used, reset
         usedQuestionIndices[letter].clear();
         for (let i = 0; i < questions.length; i++) available.push(i);
     }
@@ -165,14 +212,12 @@ function getRandomQuestion(letter) {
 $('create-room-btn').addEventListener('click', () => {
     const name1 = $('team1-name').value.trim();
     const name2 = $('team2-name').value.trim();
-
     if (!name1 || !name2) {
         alert('يرجى إدخال أسماء الفريقين');
         if (!name1) $('team1-name').focus();
         else $('team2-name').focus();
         return;
     }
-
     state.team1.name = name1;
     state.team2.name = name2;
     state.maxQuestions = parseInt($('max-questions').value);
@@ -187,7 +232,6 @@ $('create-room-btn').addEventListener('click', () => {
 socket.on('room-created', async ({ code }) => {
     state.roomCode = code;
     $('room-code-display').textContent = code;
-    updateTeamNames();
 
     // Show share link
     let shareLink;
@@ -246,7 +290,8 @@ $('copy-link-btn').addEventListener('click', async () => {
 socket.on('player-joined', ({ playerName, team, players }) => {
     state.players = players;
     renderPlayersList();
-    announce(`${playerName} انضم إلى الفريق ${team === 1 ? state.team1.name : state.team2.name}`);
+    const teamName = team === 1 ? state.team1.name : state.team2.name;
+    announce(`${playerName} انضم إلى الفريق ${teamName}`);
 });
 
 socket.on('player-left', ({ playerName, players }) => {
@@ -278,52 +323,125 @@ function renderPlayersList() {
     `;
 }
 
+// ===== Update Section Indicators =====
+function updateSectionIndicators() {
+    const section = state.currentSection;
+    const text = section === 1 ? '📢 القسم الأول: مسابقة عامة' : '👥 القسم الثاني: مسابقة فريقين';
+    const textSm = section === 1 ? '📢 عام' : '👥 فريقين';
+
+    $('current-section-indicator').textContent = text;
+    $('current-section-indicator').className = `current-section-badge section-${section}`;
+    $('game-section-indicator').textContent = textSm;
+    $('game-section-indicator').className = `current-section-badge-sm section-${section}`;
+
+    // Show/hide section 1 end button
+    $('end-section1-btn').style.display = section === 1 ? 'inline-flex' : 'none';
+
+    // Show/hide sound controls in section 1
+    $('sound-controls').hidden = section !== 1;
+}
+
 // ===== Start Game =====
 $('start-game-btn').addEventListener('click', () => {
     socket.emit('start-game');
     state.gameActive = true;
+    state.currentSection = 1;
     state.questionCount = 0;
     state.team1.score = 0;
     state.team2.score = 0;
+    state.playerScores = {};
     state.usedLetters.clear();
+    state.usedLettersSection1.clear();
     state.choosingTeam = null;
 
+    updateSectionIndicators();
     updateAllScoreDisplays();
-    updateTeamNames();
     generateLetterGrid();
 
     $('letter-screen-title').textContent = 'اختر حرفاً للسؤال الأول';
-    $('letter-screen-subtitle').textContent = 'المسؤول يختار الحرف الأول';
-    $('question-progress').textContent = `السؤال 1 من ${state.maxQuestions}`;
+    $('letter-screen-subtitle').textContent = 'القسم الأول: المسابقة العامة';
+    $('question-progress').textContent = '';
 
     showScreen('letter');
-    announce('بدأت المسابقة! اختر حرفاً للسؤال الأول.');
+    announce('بدأت المسابقة! القسم الأول: المسابقة العامة. اختر حرفاً.');
 });
 
 // ===== Update Team Names =====
 function updateTeamNames() {
     const n1 = state.team1.name;
     const n2 = state.team2.name;
-    $('score-team1-name').textContent = n1;
-    $('score-team2-name').textContent = n2;
-    $('game-team1-name').textContent = n1;
-    $('game-team2-name').textContent = n2;
-    $('result-team1-name').textContent = n1;
-    $('result-team2-name').textContent = n2;
+    // Only set these if they exist
+    if ($('score-team1-name')) $('score-team1-name').textContent = n1;
+    if ($('score-team2-name')) $('score-team2-name').textContent = n2;
+    if ($('game-team1-name')) $('game-team1-name').textContent = n1;
+    if ($('game-team2-name')) $('game-team2-name').textContent = n2;
+    if ($('result-team1-name')) $('result-team1-name').textContent = n1;
+    if ($('result-team2-name')) $('result-team2-name').textContent = n2;
 }
 
 // ===== Update Scores =====
 function updateAllScoreDisplays() {
-    const s1 = state.team1.score;
-    const s2 = state.team2.score;
-    $('score-team1-value').textContent = s1;
-    $('score-team2-value').textContent = s2;
-    $('game-team1-score').textContent = s1;
-    $('game-team2-score').textContent = s2;
+    if (state.currentSection === 1) {
+        // In section 1, show individual player scores
+        const sorted = getPlayerRanking();
+        const scoreboardEl = $('letter-scoreboard');
+        const scoreboardSmEl = $('game-scoreboard');
+
+        if (scoreboardEl) {
+            scoreboardEl.innerHTML = sorted.slice(0, 3).map((p, i) =>
+                `<div class="score-item"><span class="score-team-name" style="color: var(--gold-light);">${['\ud83e\udd47','\ud83e\udd48','\ud83e\udd49'][i] || ''} ${p.name}</span><span class="score-value" style="color: var(--gold);">${p.score}</span></div>`
+            ).join('<div class="score-divider" aria-hidden="true">|</div>') || '<div class="score-item"><span class="score-team-name">لا توجد نقاط بعد</span></div>';
+        }
+        if (scoreboardSmEl) {
+            scoreboardSmEl.innerHTML = sorted.slice(0, 3).map((p, i) =>
+                `<div class="score-item"><span class="score-team-name" style="color: var(--gold-light);">${['\ud83e\udd47','\ud83e\udd48','\ud83e\udd49'][i] || ''} ${p.name}</span><span class="score-value" style="color: var(--gold);">${p.score}</span></div>`
+            ).join('<div class="score-divider" aria-hidden="true">|</div>') || '';
+        }
+    } else {
+        // In section 2, show team scores
+        const s1 = state.team1.score;
+        const s2 = state.team2.score;
+
+        const scoreboardEl = $('letter-scoreboard');
+        const scoreboardSmEl = $('game-scoreboard');
+
+        if (scoreboardEl) {
+            scoreboardEl.innerHTML = `
+                <div class="score-item team1-score">
+                    <span class="score-team-name" id="score-team1-name">${state.team1.name}</span>
+                    <span class="score-value" id="score-team1-value">${s1}</span>
+                </div>
+                <div class="score-divider" aria-hidden="true">:</div>
+                <div class="score-item team2-score">
+                    <span class="score-value" id="score-team2-value">${s2}</span>
+                    <span class="score-team-name" id="score-team2-name">${state.team2.name}</span>
+                </div>
+            `;
+        }
+        if (scoreboardSmEl) {
+            scoreboardSmEl.innerHTML = `
+                <div class="score-item team1-score">
+                    <span class="score-team-name" id="game-team1-name">${state.team1.name}</span>
+                    <span class="score-value" id="game-team1-score">${s1}</span>
+                </div>
+                <div class="score-divider" aria-hidden="true">:</div>
+                <div class="score-item team2-score">
+                    <span class="score-value" id="game-team2-score">${s2}</span>
+                    <span class="score-team-name" id="game-team2-name">${state.team2.name}</span>
+                </div>
+            `;
+        }
+    }
+}
+
+function getPlayerRanking() {
+    return Object.values(state.playerScores)
+        .sort((a, b) => b.score - a.score);
 }
 
 function animateScore(elementId) {
     const el = $(elementId);
+    if (!el) return;
     el.classList.remove('score-pop');
     void el.offsetWidth;
     el.classList.add('score-pop');
@@ -363,9 +481,10 @@ async function selectLetter(letter) {
         state.currentQuestion = q;
         state.usedLetters.add(letter);
         state.buzzedTeam = null;
+        state.buzzedPlayerName = '';
         state.secondChance = false;
 
-        // Send to server
+        // Send to server with current section info
         socket.emit('send-question', {
             letter,
             question: q.q,
@@ -375,7 +494,13 @@ async function selectLetter(letter) {
         // Show question on host screen
         state.questionCount++;
         $('current-letter-display').textContent = letter;
-        $('question-counter').textContent = `السؤال ${state.questionCount} من ${state.maxQuestions}`;
+
+        if (state.currentSection === 1) {
+            $('question-counter').textContent = `السؤال ${state.questionCount}`;
+        } else {
+            $('question-counter').textContent = `السؤال ${state.questionCount} من ${state.maxQuestions}`;
+        }
+
         $('question-text').textContent = q.q;
         $('answer-text').textContent = q.a;
 
@@ -385,7 +510,9 @@ async function selectLetter(letter) {
         $('buzzer-result').className = 'buzzer-result';
         $('host-controls').hidden = true;
         $('waiting-buzz').hidden = false;
+        $('waiting-buzz').querySelector('.waiting-text').textContent = '⏳ في انتظار ضغط البازر من المتسابقين...';
 
+        updateSectionIndicators();
         showScreen('game');
         announce(`حرف ${letter}. السؤال ${state.questionCount}: ${q.q}`);
     } catch (err) {
@@ -396,19 +523,26 @@ async function selectLetter(letter) {
 // ===== Handle Player Buzz =====
 socket.on('player-buzzed', ({ playerName, team, teamName }) => {
     state.buzzedTeam = team;
+    state.buzzedPlayerName = playerName;
     playBuzzerSound();
 
     $('waiting-buzz').hidden = true;
 
     const resultEl = $('buzzer-result');
     resultEl.hidden = false;
-    resultEl.className = `buzzer-result team${team}-buzzed`;
-    $('buzzer-result-text').textContent = `🔔 ${playerName} (${teamName}) ضغط البازر!`;
+
+    if (state.currentSection === 1) {
+        resultEl.className = 'buzzer-result general-buzzed';
+        $('buzzer-result-text').textContent = `🔔 ${playerName} ضغط البازر!`;
+    } else {
+        resultEl.className = `buzzer-result team${team}-buzzed`;
+        $('buzzer-result-text').textContent = `🔔 ${playerName} (${teamName}) ضغط البازر!`;
+    }
 
     $('host-controls').hidden = false;
     $('btn-show-answer').focus();
 
-    announce(`${playerName} من ${teamName} ضغط البازر`);
+    announce(`${playerName} ضغط البازر`);
 });
 
 // ===== Host Controls =====
@@ -419,69 +553,84 @@ $('btn-show-answer').addEventListener('click', () => {
 });
 
 $('btn-correct').addEventListener('click', () => {
-    if (!state.buzzedTeam) return;
-
-    const team = state.buzzedTeam === 1 ? state.team1 : state.team2;
-    team.score++;
-    updateAllScoreDisplays();
-    playCorrectSound();
-
-    if (state.buzzedTeam === 1) {
-        animateScore('game-team1-score');
-        animateScore('score-team1-value');
+    if (state.currentSection === 1) {
+        // General mode - server handles scoring
+        socket.emit('judge-correct');
+        playCorrectSound();
     } else {
-        animateScore('game-team2-score');
-        animateScore('score-team2-value');
-    }
+        // Teams mode
+        if (!state.buzzedTeam) return;
+        const team = state.buzzedTeam === 1 ? state.team1 : state.team2;
+        team.score++;
+        updateAllScoreDisplays();
+        playCorrectSound();
 
-    socket.emit('judge-correct');
+        socket.emit('judge-correct');
+        announce(`إجابة صحيحة! نقطة لـ ${team.name}`);
+    }
 
     $('host-controls').hidden = true;
     $('answer-area').hidden = false;
-    announce(`إجابة صحيحة! نقطة لـ ${team.name}`);
 
-    // Check if game over
-    if (state.questionCount >= state.maxQuestions) {
+    if (state.currentSection === 2 && state.questionCount >= state.maxQuestions) {
         setTimeout(() => endGame(), 2000);
     } else {
-        // Go to letter selection - winning team chooses
-        state.choosingTeam = state.buzzedTeam;
+        if (state.currentSection === 2) {
+            state.choosingTeam = state.buzzedTeam;
+        }
         setTimeout(() => showLetterSelection(), 2000);
     }
 });
 
 $('btn-wrong').addEventListener('click', () => {
-    if (!state.buzzedTeam) return;
     playWrongSound();
 
-    if (!state.secondChance) {
-        state.secondChance = true;
+    if (state.currentSection === 1) {
+        // General mode: always give chance to next person via server
         socket.emit('judge-wrong');
 
-        const wrongTeamName = state.buzzedTeam === 1 ? state.team1.name : state.team2.name;
-        const otherTeam = state.buzzedTeam === 1 ? 2 : 1;
-        const otherName = otherTeam === 1 ? state.team1.name : state.team2.name;
-
-        state.buzzedTeam = null;
         $('host-controls').hidden = true;
         $('buzzer-result').hidden = true;
         $('waiting-buzz').hidden = false;
         $('waiting-buzz').querySelector('.waiting-text').textContent =
-            `❌ ${wrongTeamName} أخطأ! الفرصة لـ ${otherName}...`;
+            `❌ ${state.buzzedPlayerName} أخطأ! الفرصة للباقي...`;
+        state.buzzedTeam = null;
+        state.buzzedPlayerName = '';
 
-        announce(`إجابة خاطئة من ${wrongTeamName}. الفرصة لـ ${otherName}`);
+        announce('إجابة خاطئة. الفرصة للباقي');
     } else {
-        socket.emit('judge-wrong');
+        // Teams mode
+        if (!state.buzzedTeam) return;
 
-        $('host-controls').hidden = true;
-        $('answer-area').hidden = false;
-        announce(`إجابة خاطئة. الجواب: ${state.currentQuestion.a}`);
+        if (!state.secondChance) {
+            state.secondChance = true;
+            socket.emit('judge-wrong');
 
-        if (state.questionCount >= state.maxQuestions) {
-            setTimeout(() => endGame(), 2000);
+            const wrongTeamName = state.buzzedTeam === 1 ? state.team1.name : state.team2.name;
+            const otherTeam = state.buzzedTeam === 1 ? 2 : 1;
+            const otherName = otherTeam === 1 ? state.team1.name : state.team2.name;
+
+            state.buzzedTeam = null;
+            $('host-controls').hidden = true;
+            $('buzzer-result').hidden = true;
+            $('waiting-buzz').hidden = false;
+            $('waiting-buzz').querySelector('.waiting-text').textContent =
+                `❌ ${wrongTeamName} أخطأ! الفرصة لـ ${otherName}...`;
+
+            announce(`إجابة خاطئة من ${wrongTeamName}. الفرصة لـ ${otherName}`);
         } else {
-            state.choosingTeam = null; // host picks
-            setTimeout(() => showLetterSelection(), 2000);
+            socket.emit('judge-wrong');
+
+            $('host-controls').hidden = true;
+            $('answer-area').hidden = false;
+            announce(`إجابة خاطئة. الجواب: ${state.currentQuestion.a}`);
+
+            if (state.questionCount >= state.maxQuestions) {
+                setTimeout(() => endGame(), 2000);
+            } else {
+                state.choosingTeam = null;
+                setTimeout(() => showLetterSelection(), 2000);
+            }
         }
     }
 });
@@ -494,7 +643,7 @@ $('btn-skip').addEventListener('click', () => {
     $('answer-area').hidden = false;
     announce(`تم تخطي السؤال. الجواب: ${state.currentQuestion.a}`);
 
-    if (state.questionCount >= state.maxQuestions) {
+    if (state.currentSection === 2 && state.questionCount >= state.maxQuestions) {
         setTimeout(() => endGame(), 2000);
     } else {
         state.choosingTeam = null;
@@ -502,20 +651,63 @@ $('btn-skip').addEventListener('click', () => {
     }
 });
 
+// ===== Sound Effect Buttons (Section 1 only) =====
+$('btn-sound-win').addEventListener('click', () => {
+    playWinnerSound();
+    socket.emit('play-sound', { sound: 'win' });
+});
+
+$('btn-sound-lose').addEventListener('click', () => {
+    playLoseSound();
+    socket.emit('play-sound', { sound: 'lose' });
+});
+
+$('btn-sound-applause').addEventListener('click', () => {
+    playApplauseSound();
+    socket.emit('play-sound', { sound: 'applause' });
+});
+
+// ===== Server score update for general mode =====
+socket.on('score-updated', ({ playerScores }) => {
+    if (playerScores) {
+        state.playerScores = playerScores;
+        updateAllScoreDisplays();
+    }
+});
+
+// ===== Handle all-wrong in general mode =====
+socket.on('all-players-wrong', () => {
+    $('host-controls').hidden = true;
+    $('waiting-buzz').hidden = true;
+    $('buzzer-result').hidden = true;
+    $('answer-area').hidden = false;
+
+    announce('جميع المتسابقين أخطأوا. الجواب: ' + state.currentQuestion.a);
+
+    setTimeout(() => showLetterSelection(), 2000);
+});
+
 // ===== Show Letter Selection =====
 function showLetterSelection() {
     generateLetterGrid();
+    updateSectionIndicators();
 
-    const nextNum = state.questionCount + 1;
-    $('question-progress').textContent = `السؤال ${nextNum} من ${state.maxQuestions}`;
-
-    if (state.choosingTeam) {
-        const teamName = state.choosingTeam === 1 ? state.team1.name : state.team2.name;
-        $('letter-screen-title').textContent = `${teamName} يختار الحرف`;
-        $('letter-screen-subtitle').textContent = 'الفريق الفائز بالسؤال السابق يختار الحرف التالي';
-    } else {
+    if (state.currentSection === 1) {
+        $('question-progress').textContent = '';
         $('letter-screen-title').textContent = 'اختر حرفاً';
-        $('letter-screen-subtitle').textContent = 'اختر حرفاً للسؤال التالي';
+        $('letter-screen-subtitle').textContent = 'القسم الأول: المسابقة العامة';
+    } else {
+        const nextNum = state.questionCount + 1;
+        $('question-progress').textContent = `السؤال ${nextNum} من ${state.maxQuestions}`;
+
+        if (state.choosingTeam) {
+            const teamName = state.choosingTeam === 1 ? state.team1.name : state.team2.name;
+            $('letter-screen-title').textContent = `${teamName} يختار الحرف`;
+            $('letter-screen-subtitle').textContent = 'الفريق الفائز بالسؤال السابق يختار الحرف التالي';
+        } else {
+            $('letter-screen-title').textContent = 'اختر حرفاً';
+            $('letter-screen-subtitle').textContent = 'اختر حرفاً للسؤال التالي';
+        }
     }
 
     updateAllScoreDisplays();
@@ -524,9 +716,51 @@ function showLetterSelection() {
 
 // ===== Player Chose Letter (from their device) =====
 socket.on('load-letter-question', async ({ letter }) => {
-    // A player from the winning team chose a letter - load and send question
-    if (state.usedLetters.has(letter)) return; // already used
+    if (state.usedLetters.has(letter)) return;
     await selectLetter(letter);
+});
+
+// ===== End Section 1 -> Transition to Section 2 =====
+$('end-section1-btn').addEventListener('click', () => {
+    if (confirm('هل تريد إنهاء القسم الأول والانتقال لمسابقة الفريقين؟')) {
+        transitionToSection2();
+    }
+});
+
+function transitionToSection2() {
+    // Save section 1 used letters
+    state.usedLettersSection1 = new Set(state.usedLetters);
+
+    // Show transition screen
+    $('transition-team1').textContent = state.team1.name;
+    $('transition-team2').textContent = state.team2.name;
+
+    socket.emit('switch-section');
+
+    showScreen('transition');
+    announce('انتهى القسم الأول. القسم الثاني: مسابقة الفريقين.');
+}
+
+$('btn-start-section2').addEventListener('click', () => {
+    state.currentSection = 2;
+    state.questionCount = 0;
+    state.team1.score = 0;
+    state.team2.score = 0;
+    state.usedLetters.clear();
+    state.choosingTeam = null;
+
+    updateSectionIndicators();
+    updateAllScoreDisplays();
+    generateLetterGrid();
+
+    $('letter-screen-title').textContent = 'اختر حرفاً للسؤال الأول';
+    $('letter-screen-subtitle').textContent = 'القسم الثاني: مسابقة الفريقين';
+    $('question-progress').textContent = `السؤال 1 من ${state.maxQuestions}`;
+
+    socket.emit('start-section2');
+
+    showScreen('letter');
+    announce('بدأ القسم الثاني! مسابقة الفريقين. اختر حرفاً.');
 });
 
 // ===== End Game =====
@@ -538,49 +772,86 @@ $('end-game-early-btn').addEventListener('click', () => {
 
 function endGame() {
     state.gameActive = false;
-    playWinnerSound();
     socket.emit('end-game');
 
-    const s1 = state.team1.score;
-    const s2 = state.team2.score;
+    if (state.currentSection === 1) {
+        // Ended during section 1 - show individual rankings
+        const sorted = getPlayerRanking();
+        $('team-results-area').hidden = true;
+        const rankArea = $('ranking-list-area');
+        rankArea.hidden = false;
 
-    $('result-team1-score').textContent = s1;
-    $('result-team2-score').textContent = s2;
-    $('result-team1').classList.remove('winner');
-    $('result-team2').classList.remove('winner');
+        if (sorted.length === 0) {
+            rankArea.innerHTML = '<p>لا توجد نتائج</p>';
+        } else {
+            const medals = ['\ud83e\udd47', '\ud83e\udd48', '\ud83e\udd49'];
+            rankArea.innerHTML = sorted.map((p, i) =>
+                `<div class="ranking-item ${i === 0 ? 'ranking-first' : ''}">
+                    <span class="ranking-position">${medals[i] || (i + 1)}</span>
+                    <span class="ranking-name">${p.name}</span>
+                    <span class="ranking-score">${p.score} نقاط</span>
+                </div>`
+            ).join('');
+        }
 
-    let title, subtitle, icon;
-    if (s1 > s2) {
-        title = `🎉 فاز ${state.team1.name}!`;
-        subtitle = `بنتيجة ${s1} مقابل ${s2}`;
-        icon = '🏆';
-        $('result-team1').classList.add('winner');
-    } else if (s2 > s1) {
-        title = `🎉 فاز ${state.team2.name}!`;
-        subtitle = `بنتيجة ${s2} مقابل ${s1}`;
-        icon = '🏆';
-        $('result-team2').classList.add('winner');
+        $('results-title').textContent = 'انتهت المسابقة';
+        $('results-subtitle').textContent = 'القسم الأول: المسابقة العامة';
+        $('results-icon').textContent = '\ud83c\udfc6';
     } else {
-        title = '🤝 تعادل!';
-        subtitle = `النتيجة ${s1} - ${s2}`;
-        icon = '🤝';
+        // Section 2 ended - show team results with applause
+        $('team-results-area').hidden = false;
+        $('ranking-list-area').hidden = true;
+
+        const s1 = state.team1.score;
+        const s2 = state.team2.score;
+
+        $('result-team1-name').textContent = state.team1.name;
+        $('result-team2-name').textContent = state.team2.name;
+        $('result-team1-score').textContent = s1;
+        $('result-team2-score').textContent = s2;
+        $('result-team1').classList.remove('winner');
+        $('result-team2').classList.remove('winner');
+
+        let title, subtitle, icon;
+        if (s1 > s2) {
+            title = `\ud83c\udf89 فاز ${state.team1.name}!`;
+            subtitle = `بنتيجة ${s1} مقابل ${s2}`;
+            icon = '\ud83c\udfc6';
+            $('result-team1').classList.add('winner');
+        } else if (s2 > s1) {
+            title = `\ud83c\udf89 فاز ${state.team2.name}!`;
+            subtitle = `بنتيجة ${s2} مقابل ${s1}`;
+            icon = '\ud83c\udfc6';
+            $('result-team2').classList.add('winner');
+        } else {
+            title = '\ud83e\udd1d تعادل!';
+            subtitle = `النتيجة ${s1} - ${s2}`;
+            icon = '\ud83e\udd1d';
+        }
+
+        $('results-title').textContent = title;
+        $('results-subtitle').textContent = subtitle;
+        $('results-icon').textContent = icon;
+
+        // Auto applause for the winner in section 2
+        playApplauseSound();
+        playWinnerSound();
     }
 
-    $('results-title').textContent = title;
-    $('results-subtitle').textContent = subtitle;
-    $('results-icon').textContent = icon;
-
     showScreen('results');
-    announce(title + '. ' + subtitle);
+    announce($('results-title').textContent + '. ' + $('results-subtitle').textContent);
 }
 
 // ===== New Game =====
 $('btn-new-game').addEventListener('click', () => {
+    state.currentSection = 1;
     state.team1.score = 0;
     state.team2.score = 0;
     state.usedLetters.clear();
+    state.usedLettersSection1.clear();
     state.questionCount = 0;
     state.choosingTeam = null;
+    state.playerScores = {};
     Object.keys(usedQuestionIndices).forEach(k => delete usedQuestionIndices[k]);
 
     socket.emit('new-game');

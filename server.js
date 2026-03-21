@@ -52,18 +52,23 @@ io.on('connection', (socket) => {
 
         rooms[code] = {
             host: socket.id,
-            team1: { name: team1Name, score: 0 },
-            team2: { name: team2Name, score: 0 },
+            currentSection: 1, // 1 = general, 2 = teams
+            team1: { name: team1Name || '', score: 0 },
+            team2: { name: team2Name || '', score: 0 },
             players: [],
+            playerScores: {}, // { socketId: { name, score } }
             usedLetters: [],
             currentQuestion: '',
             currentAnswer: '',
             currentLetter: '',
             buzzedTeam: null,
+            buzzedPlayerId: null,
             secondChance: false,
+            secondChanceExcluded: [],
             questionCount: 0,
-            maxQuestions: maxQuestions || 10,
+            maxQuestions: maxQuestions || 10, // for section 2
             choosingTeam: null,
+            choosingPlayerId: null,
             gameStarted: false,
             buzzersLocked: false
         };
@@ -88,29 +93,33 @@ io.on('connection', (socket) => {
         socket.join(code);
         socket.roomCode = code;
         socket.playerName = playerName;
-        socket.playerTeam = team;
+        socket.playerTeam = team || 1;
 
         room.players.push({
             id: socket.id,
             name: playerName,
-            team: team
+            team: socket.playerTeam
         });
+
+        // Track individual scores (for section 1)
+        room.playerScores[socket.id] = { name: playerName, score: 0 };
 
         socket.emit('joined-room', {
             team1Name: room.team1.name,
             team2Name: room.team2.name,
-            team: team,
-            gameStarted: room.gameStarted
+            team: socket.playerTeam,
+            gameStarted: room.gameStarted,
+            currentSection: room.currentSection
         });
 
         // Notify host
         io.to(room.host).emit('player-joined', {
             playerName,
-            team,
+            team: socket.playerTeam,
             players: room.players
         });
 
-        console.log(`${playerName} joined room ${code} as team ${team}`);
+        console.log(`${playerName} joined room ${code} team ${socket.playerTeam}`);
     });
 
     // ===== Start Game =====
@@ -119,11 +128,16 @@ io.on('connection', (socket) => {
         if (!room || room.host !== socket.id) return;
 
         room.gameStarted = true;
+        room.currentSection = 1;
         room.questionCount = 0;
         room.team1.score = 0;
         room.team2.score = 0;
+        for (const id in room.playerScores) {
+            room.playerScores[id].score = 0;
+        }
 
         io.to(socket.roomCode).emit('game-started', {
+            currentSection: 1,
             team1Name: room.team1.name,
             team2Name: room.team2.name,
             maxQuestions: room.maxQuestions
@@ -139,7 +153,9 @@ io.on('connection', (socket) => {
         room.currentQuestion = question;
         room.currentAnswer = answer;
         room.buzzedTeam = null;
+        room.buzzedPlayerId = null;
         room.secondChance = false;
+        room.secondChanceExcluded = [];
         room.buzzersLocked = false;
         room.questionCount++;
 
@@ -152,24 +168,46 @@ io.on('connection', (socket) => {
             question,
             questionNumber: room.questionCount,
             maxQuestions: room.maxQuestions,
+            currentSection: room.currentSection,
             team1Score: room.team1.score,
-            team2Score: room.team2.score
+            team2Score: room.team2.score,
+            playerScores: room.playerScores
         });
     });
 
     // ===== Player Buzzes =====
     socket.on('buzz', () => {
         const room = rooms[socket.roomCode];
-        if (!room || room.buzzersLocked || room.buzzedTeam) return;
+        if (!room || room.buzzersLocked) return;
 
-        room.buzzedTeam = socket.playerTeam;
-        room.buzzersLocked = true;
+        if (room.currentSection === 1) {
+            // General mode: any player can buzz
+            if (room.buzzedPlayerId) return;
+            if (room.secondChanceExcluded.includes(socket.id)) return;
+            room.buzzedPlayerId = socket.id;
+            room.buzzersLocked = true;
 
-        io.to(socket.roomCode).emit('player-buzzed', {
-            playerName: socket.playerName,
-            team: socket.playerTeam,
-            teamName: socket.playerTeam === 1 ? room.team1.name : room.team2.name
-        });
+            io.to(socket.roomCode).emit('player-buzzed', {
+                playerName: socket.playerName,
+                playerId: socket.id,
+                team: 0,
+                teamName: socket.playerName,
+                currentSection: 1
+            });
+        } else {
+            // Teams mode: only one team can buzz
+            if (room.buzzedTeam) return;
+            room.buzzedTeam = socket.playerTeam;
+            room.buzzedPlayerId = socket.id;
+            room.buzzersLocked = true;
+
+            io.to(socket.roomCode).emit('player-buzzed', {
+                playerName: socket.playerName,
+                team: socket.playerTeam,
+                teamName: socket.playerTeam === 1 ? room.team1.name : room.team2.name,
+                currentSection: 2
+            });
+        }
     });
 
     // ===== Host Shows Answer =====
@@ -185,25 +223,51 @@ io.on('connection', (socket) => {
     // ===== Host Judges Correct =====
     socket.on('judge-correct', () => {
         const room = rooms[socket.roomCode];
-        if (!room || room.host !== socket.id || !room.buzzedTeam) return;
+        if (!room || room.host !== socket.id) return;
 
-        const winningTeam = room.buzzedTeam;
-        if (winningTeam === 1) room.team1.score++;
-        else room.team2.score++;
+        if (room.currentSection === 1) {
+            // General mode
+            if (!room.buzzedPlayerId) return;
+            const winnerId = room.buzzedPlayerId;
+            if (room.playerScores[winnerId]) {
+                room.playerScores[winnerId].score++;
+            }
+            room.choosingPlayerId = winnerId;
 
-        const isGameOver = room.questionCount >= room.maxQuestions;
+            io.to(socket.roomCode).emit('answer-correct', {
+                currentSection: 1,
+                playerId: winnerId,
+                playerName: room.playerScores[winnerId]?.name || 'متسابق',
+                answer: room.currentAnswer,
+                playerScores: room.playerScores,
+                choosingPlayerId: winnerId
+            });
 
-        io.to(socket.roomCode).emit('answer-correct', {
-            team: winningTeam,
-            teamName: winningTeam === 1 ? room.team1.name : room.team2.name,
-            answer: room.currentAnswer,
-            team1Score: room.team1.score,
-            team2Score: room.team2.score,
-            choosingTeam: winningTeam,
-            isGameOver
-        });
+            // Also send score update
+            io.to(room.host).emit('score-updated', {
+                playerScores: room.playerScores
+            });
+        } else {
+            // Teams mode
+            if (!room.buzzedTeam) return;
+            const winningTeam = room.buzzedTeam;
+            if (winningTeam === 1) room.team1.score++;
+            else room.team2.score++;
 
-        room.choosingTeam = winningTeam;
+            room.choosingTeam = winningTeam;
+            const isGameOver = room.questionCount >= room.maxQuestions;
+
+            io.to(socket.roomCode).emit('answer-correct', {
+                currentSection: 2,
+                team: winningTeam,
+                teamName: winningTeam === 1 ? room.team1.name : room.team2.name,
+                answer: room.currentAnswer,
+                team1Score: room.team1.score,
+                team2Score: room.team2.score,
+                choosingTeam: winningTeam,
+                isGameOver
+            });
+        }
     });
 
     // ===== Host Judges Wrong =====
@@ -211,29 +275,54 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
 
-        if (!room.secondChance) {
-            // First wrong answer - give other team a chance
-            room.secondChance = true;
+        if (room.currentSection === 1) {
+            // General mode: exclude this player, open buzzers for rest
+            room.secondChanceExcluded.push(room.buzzedPlayerId);
+            room.buzzedPlayerId = null;
             room.buzzersLocked = false;
-            const wrongTeam = room.buzzedTeam;
-            room.buzzedTeam = null;
-            const otherTeam = wrongTeam === 1 ? 2 : 1;
 
-            io.to(socket.roomCode).emit('second-chance', {
-                wrongTeam,
-                team: otherTeam,
-                teamName: otherTeam === 1 ? room.team1.name : room.team2.name
-            });
+            const remainingPlayers = room.players.filter(p => !room.secondChanceExcluded.includes(p.id));
+            if (remainingPlayers.length === 0) {
+                // All players failed
+                io.to(socket.roomCode).emit('both-wrong', {
+                    answer: room.currentAnswer,
+                    playerScores: room.playerScores,
+                    currentSection: 1
+                });
+
+                // Also notify host
+                io.to(room.host).emit('all-players-wrong');
+            } else {
+                io.to(socket.roomCode).emit('second-chance', {
+                    currentSection: 1,
+                    excludedPlayers: room.secondChanceExcluded
+                });
+            }
         } else {
-            // Both teams failed
-            const isGameOver = room.questionCount >= room.maxQuestions;
+            // Teams mode
+            if (!room.secondChance) {
+                room.secondChance = true;
+                room.buzzersLocked = false;
+                const wrongTeam = room.buzzedTeam;
+                room.buzzedTeam = null;
+                const otherTeam = wrongTeam === 1 ? 2 : 1;
 
-            io.to(socket.roomCode).emit('both-wrong', {
-                answer: room.currentAnswer,
-                team1Score: room.team1.score,
-                team2Score: room.team2.score,
-                isGameOver
-            });
+                io.to(socket.roomCode).emit('second-chance', {
+                    currentSection: 2,
+                    wrongTeam,
+                    team: otherTeam,
+                    teamName: otherTeam === 1 ? room.team1.name : room.team2.name
+                });
+            } else {
+                const isGameOver = room.questionCount >= room.maxQuestions;
+                io.to(socket.roomCode).emit('both-wrong', {
+                    answer: room.currentAnswer,
+                    team1Score: room.team1.score,
+                    team2Score: room.team2.score,
+                    currentSection: 2,
+                    isGameOver
+                });
+            }
         }
     });
 
@@ -242,14 +331,57 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
 
-        const isGameOver = room.questionCount >= room.maxQuestions;
+        const isGameOver = room.currentSection === 2 && room.questionCount >= room.maxQuestions;
 
         io.to(socket.roomCode).emit('question-skipped', {
             answer: room.currentAnswer,
             team1Score: room.team1.score,
             team2Score: room.team2.score,
+            playerScores: room.playerScores,
+            currentSection: room.currentSection,
             isGameOver
         });
+    });
+
+    // ===== Switch Section (Section 1 -> Section 2) =====
+    socket.on('switch-section', () => {
+        const room = rooms[socket.roomCode];
+        if (!room || room.host !== socket.id) return;
+
+        room.currentSection = 2;
+        room.questionCount = 0;
+        room.team1.score = 0;
+        room.team2.score = 0;
+        room.usedLetters = [];
+        room.choosingTeam = null;
+        room.choosingPlayerId = null;
+
+        io.to(socket.roomCode).emit('section-switched', {
+            currentSection: 2,
+            team1Name: room.team1.name,
+            team2Name: room.team2.name,
+            maxQuestions: room.maxQuestions
+        });
+    });
+
+    // ===== Start Section 2 (after transition screen) =====
+    socket.on('start-section2', () => {
+        const room = rooms[socket.roomCode];
+        if (!room || room.host !== socket.id) return;
+
+        io.to(socket.roomCode).emit('section2-started', {
+            team1Name: room.team1.name,
+            team2Name: room.team2.name,
+            maxQuestions: room.maxQuestions
+        });
+    });
+
+    // ===== Play Sound (broadcast to all players) =====
+    socket.on('play-sound', ({ sound }) => {
+        const room = rooms[socket.roomCode];
+        if (!room || room.host !== socket.id) return;
+
+        io.to(socket.roomCode).emit('play-sound', { sound });
     });
 
     // ===== Player Chooses Letter =====
@@ -257,15 +389,17 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomCode];
         if (!room) return;
 
-        // Only allow the choosing team's players or the host
-        if (socket.isHost || socket.playerTeam === room.choosingTeam) {
+        const allowed = socket.isHost ||
+            (room.currentSection === 1 && socket.id === room.choosingPlayerId) ||
+            (room.currentSection === 2 && socket.playerTeam === room.choosingTeam);
+
+        if (allowed) {
             io.to(socket.roomCode).emit('letter-chosen', {
                 letter,
                 chosenBy: socket.playerName || 'المسؤول',
                 team: room.choosingTeam
             });
 
-            // Notify host specifically to load question
             io.to(room.host).emit('load-letter-question', { letter });
         }
     });
@@ -276,10 +410,12 @@ io.on('connection', (socket) => {
         if (!room || room.host !== socket.id) return;
 
         io.to(socket.roomCode).emit('game-ended', {
+            currentSection: room.currentSection,
             team1Name: room.team1.name,
             team2Name: room.team2.name,
             team1Score: room.team1.score,
-            team2Score: room.team2.score
+            team2Score: room.team2.score,
+            playerScores: room.playerScores
         });
     });
 
@@ -288,12 +424,17 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
 
+        room.currentSection = 1;
         room.team1.score = 0;
         room.team2.score = 0;
         room.usedLetters = [];
         room.questionCount = 0;
         room.gameStarted = false;
         room.choosingTeam = null;
+        room.choosingPlayerId = null;
+        for (const id in room.playerScores) {
+            room.playerScores[id].score = 0;
+        }
 
         io.to(socket.roomCode).emit('game-reset');
     });

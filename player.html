@@ -32,8 +32,8 @@
                     <label for="player-name-input">اسمك</label>
                     <input type="text" id="player-name-input" placeholder="أدخل اسمك" autocomplete="off">
                 </div>
-                <div class="field">
-                    <label>اختر فريقك</label>
+                <div class="field" id="team-select-field">
+                    <label>اختر فريقك (للقسم الثاني)</label>
                     <div class="team-select-btns">
                         <button class="btn team-select-btn team1-select" id="select-team1" data-team="1">
                             <span id="team1-label">الفريق الأول</span>
@@ -69,10 +69,11 @@
         <div class="container">
             <header class="game-header">
                 <div class="game-info">
+                    <span class="current-section-badge-sm" id="p-section-indicator"></span>
                     <span class="current-letter-badge" id="p-current-letter"></span>
                     <span class="question-counter" id="p-question-counter">السؤال 1 من 10</span>
                 </div>
-                <div class="scoreboard scoreboard-sm">
+                <div class="scoreboard scoreboard-sm" id="p-scoreboard">
                     <div class="score-item team1-score">
                         <span class="score-team-name" id="p-team1-name">الفريق 1</span>
                         <span class="score-value" id="p-team1-score">0</span>
@@ -124,10 +125,10 @@
         <div class="container">
             <header class="screen-header">
                 <h2>🎉 أحسنت! اختر الحرف التالي</h2>
-                <p class="subtitle">فريقك أجاب إجابة صحيحة - اختر حرفاً للسؤال القادم</p>
+                <p class="subtitle">أجبت إجابة صحيحة - اختر حرفاً للسؤال القادم</p>
             </header>
 
-            <div class="scoreboard">
+            <div class="scoreboard" id="pl-scoreboard">
                 <div class="score-item team1-score">
                     <span class="score-team-name" id="pl-team1-name">الفريق 1</span>
                     <span class="score-value" id="pl-team1-score">0</span>
@@ -152,13 +153,31 @@
         </div>
     </section>
 
+    <!-- Section Transition Screen (Player) -->
+    <section id="player-transition-screen" class="screen" aria-label="الانتقال بين الأقسام">
+        <div class="container results-container">
+            <div class="transition-icon" aria-hidden="true">🔄</div>
+            <h2 class="transition-title">انتهى القسم الأول!</h2>
+            <p class="transition-subtitle">المسابقة العامة</p>
+            <div class="transition-divider"></div>
+            <h3 class="transition-next">القسم الثاني: مسابقة الفريقين</h3>
+            <p class="transition-teams">
+                <span class="transition-team team1-color" id="p-transition-team1"></span>
+                <span class="transition-vs">ضد</span>
+                <span class="transition-team team2-color" id="p-transition-team2"></span>
+            </p>
+            <p class="subtitle" style="margin-top:1.5rem;">انتظر بدء القسم الثاني...</p>
+            <div class="waiting-dots"><span></span><span></span><span></span></div>
+        </div>
+    </section>
+
     <!-- Player Results Screen -->
     <section id="player-results-screen" class="screen" aria-label="النتائج">
         <div class="container results-container">
             <div class="results-icon" id="p-results-icon">🏆</div>
             <h2 id="p-results-title" class="results-title"></h2>
             <p id="p-results-subtitle" class="results-subtitle"></p>
-            <div class="results-scores">
+            <div class="results-scores" id="p-team-results-area">
                 <div class="result-card team1-result" id="p-result-team1">
                     <span class="result-team-name" id="p-result-team1-name">الفريق 1</span>
                     <span class="result-score" id="p-result-team1-score">0</span>
@@ -170,6 +189,7 @@
                     <span class="result-label">نقاط</span>
                 </div>
             </div>
+            <div class="ranking-list" id="p-ranking-list-area" hidden></div>
         </div>
     </section>
 

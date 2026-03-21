@@ -1173,3 +1173,378 @@ h1 {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* ===== Mode Selection ===== */
+.mode-selection {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.mode-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.mode-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.mode-btn {
+    flex: 1;
+    min-width: 180px;
+    max-width: 280px;
+    padding: 1.5rem 1rem;
+    background: var(--bg-card);
+    border: 2px solid var(--border-card);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: inherit;
+    color: var(--text-primary);
+}
+
+.mode-btn:hover {
+    background: var(--bg-card-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
+
+.mode-btn:focus-visible {
+    outline: 3px solid var(--gold);
+    outline-offset: 2px;
+}
+
+.mode-btn-active {
+    border-color: var(--gold);
+    background: rgba(240, 165, 0, 0.1);
+    box-shadow: 0 0 20px rgba(240, 165, 0, 0.15);
+}
+
+.mode-icon {
+    font-size: 2.5rem;
+}
+
+.mode-label {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--gold-light);
+}
+
+.mode-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+/* ===== Ranking List (General Mode Results) ===== */
+.ranking-list {
+    max-width: 500px;
+    margin: 0 auto 2rem;
+}
+
+.ranking-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    margin-bottom: 0.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+}
+
+.ranking-first {
+    background: rgba(240, 165, 0, 0.1);
+    border-color: var(--gold);
+    box-shadow: 0 0 25px rgba(240, 165, 0, 0.2);
+}
+
+.ranking-position {
+    font-size: 1.6rem;
+    min-width: 2.5rem;
+    text-align: center;
+}
+
+.ranking-name {
+    flex: 1;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.ranking-score {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--gold-light);
+}
+
+/* ===== General Mode Player Tag ===== */
+.player-tag {
+    display: inline-block;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0.2rem;
+    background: rgba(240, 165, 0, 0.15);
+    color: var(--gold-light);
+    border: 1px solid rgba(240, 165, 0, 0.3);
+}
+
+/* ===== Section Info Card ===== */
+.section-info-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    backdrop-filter: blur(12px);
+}
+
+.section-info-title {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--gold-light);
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.section-info-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.section-info-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.section-badge {
+    display: inline-flex;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.section-badge-1 {
+    background: rgba(99, 102, 241, 0.2);
+    color: #a5b4fc;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.section-badge-2 {
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* ===== Section Indicator Badges ===== */
+.current-section-badge {
+    display: inline-block;
+    padding: 0.5rem 1.2rem;
+    border-radius: 30px;
+    font-size: 1rem;
+    font-weight: 800;
+    margin-bottom: 1rem;
+    animation: slideDown 0.3s ease;
+}
+
+.current-section-badge-sm {
+    display: inline-flex;
+    padding: 0.25rem 0.7rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.section-1 {
+    background: rgba(99, 102, 241, 0.2);
+    color: #a5b4fc;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.section-2 {
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* ===== General Buzzed Result ===== */
+.buzzer-result.general-buzzed {
+    background: rgba(240, 165, 0, 0.15);
+    border: 1px solid rgba(240, 165, 0, 0.3);
+    color: var(--gold-light);
+}
+
+/* ===== Sound Controls ===== */
+.sound-controls {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius);
+    text-align: center;
+}
+
+.sound-controls-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.sound-buttons {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.btn-sound {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.95rem;
+    border-radius: var(--radius-sm);
+}
+
+.btn-sound-win {
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.btn-sound-win:hover {
+    background: rgba(16, 185, 129, 0.35);
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+}
+
+.btn-sound-lose {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-sound-lose:hover {
+    background: rgba(239, 68, 68, 0.35);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+}
+
+.btn-sound-applause {
+    background: rgba(240, 165, 0, 0.2);
+    color: var(--gold-light);
+    border: 1px solid rgba(240, 165, 0, 0.3);
+}
+
+.btn-sound-applause:hover {
+    background: rgba(240, 165, 0, 0.35);
+    box-shadow: 0 0 15px rgba(240, 165, 0, 0.3);
+}
+
+/* ===== Section Transition Screen ===== */
+.transition-icon {
+    font-size: 5rem;
+    margin-bottom: 1rem;
+    animation: spin 2s ease-in-out;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg) scale(0.5); opacity: 0; }
+    50% { transform: rotate(180deg) scale(1.2); }
+    100% { transform: rotate(360deg) scale(1); opacity: 1; }
+}
+
+.transition-title {
+    font-size: 2.5rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--gold-light), var(--gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.5rem;
+}
+
+.transition-subtitle {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+}
+
+.transition-divider {
+    width: 60%;
+    max-width: 300px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    margin: 1.5rem auto;
+}
+
+.transition-next {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+
+.transition-teams {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    font-size: 1.3rem;
+    font-weight: 800;
+}
+
+.transition-team {
+    padding: 0.5rem 1.5rem;
+    border-radius: var(--radius-sm);
+}
+
+.team1-color {
+    color: var(--team1-light);
+    background: var(--team1-bg);
+    border: 1px solid var(--team1-border);
+}
+
+.team2-color {
+    color: var(--team2-light);
+    background: var(--team2-bg);
+    border: 1px solid var(--team2-border);
+}
+
+.transition-vs {
+    color: var(--gold);
+    font-size: 1.5rem;
+}
+
+/* ===== Sound controls responsive ===== */
+@media (max-width: 640px) {
+    .sound-buttons {
+        flex-direction: column;
+    }
+    
+    .transition-title {
+        font-size: 1.8rem;
+    }
+    
+    .transition-teams {
+        font-size: 1rem;
+    }
+}
