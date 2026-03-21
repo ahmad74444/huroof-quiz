@@ -5,7 +5,9 @@ const os = require('os');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    maxHttpBufferSize: 1e6 // 1MB for audio chunks
+});
 
 app.use(express.static(__dirname));
 
@@ -35,10 +37,10 @@ app.get('/api/server-info', (req, res) => {
 // ===== Room Storage =====
 const rooms = {};
 
+// Room code: 5 digits only
 function generateRoomCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
-    for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    for (let i = 0; i < 5; i++) code += Math.floor(Math.random() * 10);
     return code;
 }
 
@@ -55,6 +57,7 @@ io.on('connection', (socket) => {
             enableSection1: enableSection1 !== false,
             enableSection2: enableSection2 !== false,
             currentSection: (enableSection1 !== false) ? 1 : 2,
+            showQuestionToPlayers: true, // default: show question
             team1: { name: team1Name || '', score: 0 },
             team2: { name: team2Name || '', score: 0 },
             players: [],
@@ -80,12 +83,12 @@ io.on('connection', (socket) => {
         socket.isHost = true;
 
         socket.emit('room-created', { code });
-        console.log(`Room ${code} created by ${socket.id} (S1:${rooms[code].enableSection1} S2:${rooms[code].enableSection2})`);
+        console.log(`Room ${code} created (S1:${rooms[code].enableSection1} S2:${rooms[code].enableSection2})`);
     });
 
     // ===== Check Room (for player pre-join info) =====
     socket.on('check-room', ({ code }) => {
-        code = (code || '').toUpperCase().trim();
+        code = (code || '').trim();
         const room = rooms[code];
         if (!room) {
             socket.emit('room-info', { exists: false });
@@ -101,7 +104,7 @@ io.on('connection', (socket) => {
 
     // ===== Join Room =====
     socket.on('join-room', ({ code, playerName, team }) => {
-        code = code.toUpperCase().trim();
+        code = (code || '').trim();
         const room = rooms[code];
         if (!room) {
             socket.emit('join-error', 'لم يتم العثور على الغرفة. تأكد من الرمز.');
@@ -119,7 +122,6 @@ io.on('connection', (socket) => {
             team: socket.playerTeam
         });
 
-        // Track individual scores (for section 1)
         room.playerScores[socket.id] = { name: playerName, score: 0 };
 
         socket.emit('joined-room', {
@@ -132,7 +134,6 @@ io.on('connection', (socket) => {
             enableSection2: room.enableSection2
         });
 
-        // Notify host
         io.to(room.host).emit('player-joined', {
             playerName,
             team: socket.playerTeam,
@@ -148,7 +149,7 @@ io.on('connection', (socket) => {
         if (!room || room.host !== socket.id) return;
 
         room.gameStarted = true;
-        room.currentSection = 1;
+        room.currentSection = room.enableSection1 ? 1 : 2;
         room.questionCount = 0;
         room.team1.score = 0;
         room.team2.score = 0;
@@ -157,11 +158,18 @@ io.on('connection', (socket) => {
         }
 
         io.to(socket.roomCode).emit('game-started', {
-            currentSection: 1,
+            currentSection: room.currentSection,
             team1Name: room.team1.name,
             team2Name: room.team2.name,
             maxQuestions: room.maxQuestions
         });
+    });
+
+    // ===== Toggle Question Visibility =====
+    socket.on('toggle-question-visibility', ({ show }) => {
+        const room = rooms[socket.roomCode];
+        if (!room || room.host !== socket.id) return;
+        room.showQuestionToPlayers = show;
     });
 
     // ===== Host Sends Question =====
@@ -185,7 +193,8 @@ io.on('connection', (socket) => {
 
         io.to(socket.roomCode).emit('question-shown', {
             letter,
-            question,
+            question: room.showQuestionToPlayers ? question : '',
+            showQuestion: room.showQuestionToPlayers,
             questionNumber: room.questionCount,
             maxQuestions: room.maxQuestions,
             currentSection: room.currentSection,
@@ -201,7 +210,6 @@ io.on('connection', (socket) => {
         if (!room || room.buzzersLocked) return;
 
         if (room.currentSection === 1) {
-            // General mode: any player can buzz
             if (room.buzzedPlayerId) return;
             if (room.secondChanceExcluded.includes(socket.id)) return;
             room.buzzedPlayerId = socket.id;
@@ -215,7 +223,6 @@ io.on('connection', (socket) => {
                 currentSection: 1
             });
         } else {
-            // Teams mode: only one team can buzz
             if (room.buzzedTeam) return;
             room.buzzedTeam = socket.playerTeam;
             room.buzzedPlayerId = socket.id;
@@ -246,7 +253,6 @@ io.on('connection', (socket) => {
         if (!room || room.host !== socket.id) return;
 
         if (room.currentSection === 1) {
-            // General mode
             if (!room.buzzedPlayerId) return;
             const winnerId = room.buzzedPlayerId;
             if (room.playerScores[winnerId]) {
@@ -263,12 +269,10 @@ io.on('connection', (socket) => {
                 choosingPlayerId: winnerId
             });
 
-            // Also send score update
             io.to(room.host).emit('score-updated', {
                 playerScores: room.playerScores
             });
         } else {
-            // Teams mode
             if (!room.buzzedTeam) return;
             const winningTeam = room.buzzedTeam;
             if (winningTeam === 1) room.team1.score++;
@@ -296,21 +300,17 @@ io.on('connection', (socket) => {
         if (!room || room.host !== socket.id) return;
 
         if (room.currentSection === 1) {
-            // General mode: exclude this player, open buzzers for rest
             room.secondChanceExcluded.push(room.buzzedPlayerId);
             room.buzzedPlayerId = null;
             room.buzzersLocked = false;
 
             const remainingPlayers = room.players.filter(p => !room.secondChanceExcluded.includes(p.id));
             if (remainingPlayers.length === 0) {
-                // All players failed
                 io.to(socket.roomCode).emit('both-wrong', {
                     answer: room.currentAnswer,
                     playerScores: room.playerScores,
                     currentSection: 1
                 });
-
-                // Also notify host
                 io.to(room.host).emit('all-players-wrong');
             } else {
                 io.to(socket.roomCode).emit('second-chance', {
@@ -319,7 +319,6 @@ io.on('connection', (socket) => {
                 });
             }
         } else {
-            // Teams mode
             if (!room.secondChance) {
                 room.secondChance = true;
                 room.buzzersLocked = false;
@@ -363,7 +362,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ===== Switch Section (Section 1 -> Section 2) =====
+    // ===== Switch Section =====
     socket.on('switch-section', () => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
@@ -384,7 +383,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ===== Start Section 2 (after transition screen) =====
+    // ===== Start Section 2 =====
     socket.on('start-section2', () => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
@@ -396,32 +395,44 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ===== Play Sound (broadcast to all players) =====
+    // ===== Play Sound =====
     socket.on('play-sound', ({ sound }) => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
-
         io.to(socket.roomCode).emit('play-sound', { sound });
     });
 
-    // ===== Player Chooses Letter =====
+    // ===== Host Microphone Audio =====
+    socket.on('mic-audio', (data) => {
+        const room = rooms[socket.roomCode];
+        if (!room || room.host !== socket.id) return;
+        // Relay audio to all players in room (except host)
+        socket.to(socket.roomCode).emit('mic-audio', data);
+    });
+
+    socket.on('mic-started', () => {
+        const room = rooms[socket.roomCode];
+        if (!room || room.host !== socket.id) return;
+        socket.to(socket.roomCode).emit('mic-started');
+    });
+
+    socket.on('mic-stopped', () => {
+        const room = rooms[socket.roomCode];
+        if (!room || room.host !== socket.id) return;
+        socket.to(socket.roomCode).emit('mic-stopped');
+    });
+
+    // ===== Choose Letter (host only now) =====
     socket.on('choose-letter', ({ letter }) => {
         const room = rooms[socket.roomCode];
-        if (!room) return;
+        if (!room || room.host !== socket.id) return;
 
-        const allowed = socket.isHost ||
-            (room.currentSection === 1 && socket.id === room.choosingPlayerId) ||
-            (room.currentSection === 2 && socket.playerTeam === room.choosingTeam);
+        io.to(socket.roomCode).emit('letter-chosen', {
+            letter,
+            chosenBy: 'المسؤول'
+        });
 
-        if (allowed) {
-            io.to(socket.roomCode).emit('letter-chosen', {
-                letter,
-                chosenBy: socket.playerName || 'المسؤول',
-                team: room.choosingTeam
-            });
-
-            io.to(room.host).emit('load-letter-question', { letter });
-        }
+        io.to(room.host).emit('load-letter-question', { letter });
     });
 
     // ===== End Game =====
@@ -439,12 +450,12 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ===== New Game (reset) =====
+    // ===== New Game =====
     socket.on('new-game', () => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
 
-        room.currentSection = 1;
+        room.currentSection = room.enableSection1 ? 1 : 2;
         room.team1.score = 0;
         room.team2.score = 0;
         room.usedLetters = [];
@@ -500,7 +511,6 @@ server.listen(PORT, '0.0.0.0', () => {
         console.log(`  ║  Player:  ${(networkUrl + '/player.html').padEnd(30)}║`);
         console.log(`  ╚══════════════════════════════════════════╝\n`);
 
-        // Auto-open browser (local only)
         const { exec } = require('child_process');
         const cmd = process.platform === 'win32' ? 'start' :
                     process.platform === 'darwin' ? 'open' : 'xdg-open';

@@ -27,7 +27,7 @@ try {
         alert('تعذر الاتصال بالسيرفر!\n\nتأكد من تشغيل السيرفر بالأمر:\nnpm start\n\nثم افتح الصفحة من:\nhttp://localhost:3000');
     });
 } catch (e) {
-    alert('تعذر الاتصال بالسيرفر!\n\nتأكد من تشغيل السيرفر بالأمر:\nnpm start\n\nثم افتح الصفحة من:\nhttp://localhost:3000');
+    alert('تعذر الاتصال بالسيرفر!');
 }
 
 // ===== Game State =====
@@ -35,7 +35,8 @@ const state = {
     roomCode: '',
     enableSection1: true,
     enableSection2: true,
-    currentSection: 1, // 1 = general, 2 = teams
+    currentSection: 1,
+    showQuestionToPlayers: true,
     team1: { name: '', score: 0 },
     team2: { name: '', score: 0 },
     players: [],
@@ -43,7 +44,7 @@ const state = {
     currentLetter: '',
     currentQuestion: null,
     questionCount: 0,
-    maxQuestions: 10, // for section 2 only
+    maxQuestions: 10,
     buzzedTeam: null,
     buzzedPlayerName: '',
     secondChance: false,
@@ -75,100 +76,98 @@ function showScreen(name) {
     }
 }
 
-// ===== Announcer =====
+// ===== Announcer (for screen readers) =====
 function announce(message) {
     const el = $('sr-announcer');
     el.textContent = '';
     setTimeout(() => { el.textContent = message; }, 100);
 }
 
-// ===== Sound Effects =====
-let audioCtx = null;
-function getAudioCtx() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    return audioCtx;
+// ===== Sound Effects (real audio files) =====
+const sounds = {
+    correct: new Audio(encodeURI('إجابة صحيحة - مؤثر صوتي.wav')),
+    wrong: new Audio(encodeURI('إجابة خاطئة - مؤثر صوتي.wav')),
+    win: new Audio(encodeURI('الفوز - مؤثر صوتي.mp3')),
+    buzzer: new Audio(encodeURI('صوت البوزر - مؤثر صوتي.wav'))
+};
+
+// Preload
+Object.values(sounds).forEach(s => { s.load(); });
+
+function playSound(name) {
+    const s = sounds[name];
+    if (s) {
+        s.currentTime = 0;
+        s.play().catch(() => {});
+    }
 }
 
-function playTone(freq, duration, type = 'square', volume = 0.15) {
+function playCorrectSound() { playSound('correct'); }
+function playWrongSound() { playSound('wrong'); }
+function playBuzzerSound() { playSound('buzzer'); }
+function playWinnerSound() { playSound('win'); }
+function playApplauseSound() { playSound('win'); }
+function playLoseSound() { playSound('wrong'); }
+
+// ===== Microphone =====
+let micStream = null;
+let mediaRecorder = null;
+let micActive = false;
+
+$('btn-mic').addEventListener('click', async () => {
+    if (micActive) {
+        stopMic();
+    } else {
+        await startMic();
+    }
+});
+
+async function startMic() {
     try {
-        const ctx = getAudioCtx();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = freq;
-        osc.type = type;
-        gain.gain.setValueAtTime(volume, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-        osc.start();
-        osc.stop(ctx.currentTime + duration);
-    } catch (e) {}
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm;codecs=opus' });
+
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                e.data.arrayBuffer().then(buf => {
+                    socket.emit('mic-audio', buf);
+                });
+            }
+        };
+
+        mediaRecorder.start(200); // send chunks every 200ms
+        micActive = true;
+        $('btn-mic').classList.add('mic-active');
+        $('mic-label').textContent = 'إيقاف المايك';
+        socket.emit('mic-started');
+        announce('تم تشغيل المايكروفون');
+    } catch (err) {
+        alert('تعذر الوصول للمايكروفون. تأكد من إعطاء الإذن.');
+    }
 }
 
-function playBuzzerSound() {
-    playTone(220, 0.15, 'sawtooth', 0.2);
-    setTimeout(() => playTone(330, 0.15, 'sawtooth', 0.2), 80);
+function stopMic() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+    if (micStream) {
+        micStream.getTracks().forEach(t => t.stop());
+    }
+    micStream = null;
+    mediaRecorder = null;
+    micActive = false;
+    $('btn-mic').classList.remove('mic-active');
+    $('mic-label').textContent = 'المايك';
+    socket.emit('mic-stopped');
+    announce('تم إيقاف المايكروفون');
 }
 
-function playCorrectSound() {
-    playTone(523, 0.12, 'sine', 0.2);
-    setTimeout(() => playTone(659, 0.12, 'sine', 0.2), 120);
-    setTimeout(() => playTone(784, 0.2, 'sine', 0.2), 240);
-}
-
-function playWrongSound() {
-    playTone(330, 0.2, 'sawtooth', 0.15);
-    setTimeout(() => playTone(262, 0.3, 'sawtooth', 0.15), 200);
-}
-
-function playWinnerSound() {
-    [523, 587, 659, 784, 880, 1047].forEach((f, i) => {
-        setTimeout(() => playTone(f, 0.2, 'sine', 0.15), i * 120);
-    });
-}
-
-function playApplauseSound() {
-    // Simulate applause with noise bursts
-    try {
-        const ctx = getAudioCtx();
-        const duration = 3;
-        const bufferSize = ctx.sampleRate * duration;
-        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-
-        for (let i = 0; i < bufferSize; i++) {
-            const t = i / ctx.sampleRate;
-            const envelope = Math.sin(Math.PI * t / duration) * 0.3;
-            // Random clapping bursts
-            const clap = (Math.random() * 2 - 1) * envelope;
-            data[i] = clap * (0.5 + 0.5 * Math.sin(t * 8));
-        }
-
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.frequency.value = 2000;
-        filter.Q.value = 0.5;
-
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.4, ctx.currentTime);
-
-        source.connect(filter);
-        filter.connect(gain);
-        gain.connect(ctx.destination);
-        source.start();
-    } catch (e) {}
-}
-
-function playLoseSound() {
-    // Sad descending tones
-    playTone(440, 0.3, 'sine', 0.15);
-    setTimeout(() => playTone(370, 0.3, 'sine', 0.15), 300);
-    setTimeout(() => playTone(330, 0.3, 'sine', 0.15), 600);
-    setTimeout(() => playTone(262, 0.5, 'sine', 0.15), 900);
-}
+// ===== Question Visibility Toggle =====
+$('toggle-show-question').addEventListener('change', () => {
+    state.showQuestionToPlayers = $('toggle-show-question').checked;
+    socket.emit('toggle-question-visibility', { show: state.showQuestionToPlayers });
+    announce(state.showQuestionToPlayers ? 'السؤال يظهر للمتسابقين' : 'السؤال مخفي عن المتسابقين');
+});
 
 // ===== Load Letter Questions =====
 function loadLetterQuestions(letter) {
@@ -216,7 +215,6 @@ function updateSectionMode() {
     state.enableSection1 = (mode === 'both' || mode === 'section1');
     state.enableSection2 = (mode === 'both' || mode === 'section2');
 
-    // Show/hide teams setup and question count based on section 2
     $('teams-setup-area').style.display = state.enableSection2 ? 'flex' : 'none';
     $('max-questions-area').style.display = state.enableSection2 ? 'block' : 'none';
 }
@@ -257,13 +255,12 @@ socket.on('room-created', async ({ code }) => {
     state.roomCode = code;
     $('room-code-display').textContent = code;
 
-    // Show share link
     let shareLink;
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     if (isLocal) {
         try {
-            const res = await fetch('/api/server-info');
-            const info = await res.json();
+            const resp = await fetch('/api/server-info');
+            const info = await resp.json();
             shareLink = `http://${info.ip}:${info.port}/player.html?room=${code}`;
         } catch (e) {
             shareLink = `${window.location.origin}/player.html?room=${code}`;
@@ -271,36 +268,27 @@ socket.on('room-created', async ({ code }) => {
     } else {
         shareLink = `${window.location.origin}/player.html?room=${code}`;
     }
-    $('network-link-display').textContent = shareLink;
+
     $('network-link-display').href = shareLink;
+    $('network-link-display').textContent = shareLink;
     $('network-link-area').hidden = false;
 
     showScreen('lobby');
-    announce(`تم إنشاء الغرفة. الرمز: ${code}`);
+    announce(`تم إنشاء الغرفة. الرمز: ${code.split('').join(' ')}`);
 });
 
-// ===== Copy Room Code =====
-$('copy-code-btn').addEventListener('click', () => {
-    navigator.clipboard.writeText(state.roomCode).then(() => {
+$('copy-code-btn').addEventListener('click', async () => {
+    try {
+        await navigator.clipboard.writeText(state.roomCode);
         $('copy-code-btn').textContent = '✅ تم النسخ!';
-        setTimeout(() => { $('copy-code-btn').textContent = '📋 نسخ الرمز'; }, 2000);
-    });
+    } catch (e) {
+        prompt('انسخ الرمز:', state.roomCode);
+    }
+    setTimeout(() => { $('copy-code-btn').textContent = '📋 نسخ الرمز'; }, 2000);
 });
 
 $('copy-link-btn').addEventListener('click', async () => {
-    let link;
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (isLocal) {
-        try {
-            const res = await fetch('/api/server-info');
-            const info = await res.json();
-            link = `http://${info.ip}:${info.port}/player.html?room=${state.roomCode}`;
-        } catch (e) {
-            link = `${window.location.origin}/player.html?room=${state.roomCode}`;
-        }
-    } else {
-        link = `${window.location.origin}/player.html?room=${state.roomCode}`;
-    }
+    const link = $('network-link-display').href;
     try {
         await navigator.clipboard.writeText(link);
         $('copy-link-btn').textContent = '✅ تم النسخ!';
@@ -314,8 +302,12 @@ $('copy-link-btn').addEventListener('click', async () => {
 socket.on('player-joined', ({ playerName, team, players }) => {
     state.players = players;
     renderPlayersList();
-    const teamName = team === 1 ? state.team1.name : state.team2.name;
-    announce(`${playerName} انضم إلى الفريق ${teamName}`);
+    if (state.enableSection2) {
+        const teamName = team === 1 ? state.team1.name : state.team2.name;
+        announce(`${playerName} انضم إلى الفريق ${teamName}`);
+    } else {
+        announce(`${playerName} انضم للمسابقة`);
+    }
 });
 
 socket.on('player-left', ({ playerName, players }) => {
@@ -330,21 +322,27 @@ function renderPlayersList() {
         return;
     }
 
-    const team1Players = state.players.filter(p => p.team === 1);
-    const team2Players = state.players.filter(p => p.team === 2);
+    if (state.enableSection2) {
+        const team1Players = state.players.filter(p => p.team === 1);
+        const team2Players = state.players.filter(p => p.team === 2);
 
-    list.innerHTML = `
-        <div class="player-group">
-            <h4 style="color: var(--team1-light);">${state.team1.name} (${team1Players.length})</h4>
-            ${team1Players.map(p => `<span class="player-tag team1-tag">${p.name}</span>`).join('')}
-            ${team1Players.length === 0 ? '<span class="no-players-sm">لا يوجد لاعبين</span>' : ''}
-        </div>
-        <div class="player-group">
-            <h4 style="color: var(--team2-light);">${state.team2.name} (${team2Players.length})</h4>
-            ${team2Players.map(p => `<span class="player-tag team2-tag">${p.name}</span>`).join('')}
-            ${team2Players.length === 0 ? '<span class="no-players-sm">لا يوجد لاعبين</span>' : ''}
-        </div>
-    `;
+        list.innerHTML = `
+            <div class="player-group">
+                <h4 style="color: var(--team1-light);">${state.team1.name} (${team1Players.length})</h4>
+                ${team1Players.map(p => `<span class="player-tag team1-tag">${p.name}</span>`).join('')}
+                ${team1Players.length === 0 ? '<span class="no-players-sm">لا يوجد لاعبين</span>' : ''}
+            </div>
+            <div class="player-group">
+                <h4 style="color: var(--team2-light);">${state.team2.name} (${team2Players.length})</h4>
+                ${team2Players.map(p => `<span class="player-tag team2-tag">${p.name}</span>`).join('')}
+                ${team2Players.length === 0 ? '<span class="no-players-sm">لا يوجد لاعبين</span>' : ''}
+            </div>
+        `;
+    } else {
+        list.innerHTML = state.players.map(p =>
+            `<span class="player-tag">${p.name}</span>`
+        ).join('');
+    }
 }
 
 // ===== Update Section Indicators =====
@@ -358,10 +356,7 @@ function updateSectionIndicators() {
     $('game-section-indicator').textContent = textSm;
     $('game-section-indicator').className = `current-section-badge-sm section-${section}`;
 
-    // Show/hide section 1 end button (only if section 2 is also enabled)
     $('end-section1-btn').style.display = (section === 1 && state.enableSection2) ? 'inline-flex' : 'none';
-
-    // Show/hide sound controls in section 1
     $('sound-controls').hidden = section !== 1;
 }
 
@@ -378,7 +373,6 @@ $('start-game-btn').addEventListener('click', () => {
     state.choosingTeam = null;
 
     if (state.enableSection1) {
-        // Start with section 1 (general)
         state.currentSection = 1;
         updateSectionIndicators();
         updateAllScoreDisplays();
@@ -391,7 +385,6 @@ $('start-game-btn').addEventListener('click', () => {
         showScreen('letter');
         announce('بدأت المسابقة! القسم الأول: المسابقة العامة. اختر حرفاً.');
     } else {
-        // Skip section 1, start directly with section 2 (teams)
         state.currentSection = 2;
         updateSectionIndicators();
         updateAllScoreDisplays();
@@ -410,7 +403,6 @@ $('start-game-btn').addEventListener('click', () => {
 function updateTeamNames() {
     const n1 = state.team1.name;
     const n2 = state.team2.name;
-    // Only set these if they exist
     if ($('score-team1-name')) $('score-team1-name').textContent = n1;
     if ($('score-team2-name')) $('score-team2-name').textContent = n2;
     if ($('game-team1-name')) $('game-team1-name').textContent = n1;
@@ -422,7 +414,6 @@ function updateTeamNames() {
 // ===== Update Scores =====
 function updateAllScoreDisplays() {
     if (state.currentSection === 1) {
-        // In section 1, show individual player scores
         const sorted = getPlayerRanking();
         const scoreboardEl = $('letter-scoreboard');
         const scoreboardSmEl = $('game-scoreboard');
@@ -438,10 +429,8 @@ function updateAllScoreDisplays() {
             ).join('<div class="score-divider" aria-hidden="true">|</div>') || '';
         }
     } else {
-        // In section 2, show team scores
         const s1 = state.team1.score;
         const s2 = state.team2.score;
-
         const scoreboardEl = $('letter-scoreboard');
         const scoreboardSmEl = $('game-scoreboard');
 
@@ -477,14 +466,6 @@ function updateAllScoreDisplays() {
 function getPlayerRanking() {
     return Object.values(state.playerScores)
         .sort((a, b) => b.score - a.score);
-}
-
-function animateScore(elementId) {
-    const el = $(elementId);
-    if (!el) return;
-    el.classList.remove('score-pop');
-    void el.offsetWidth;
-    el.classList.add('score-pop');
 }
 
 // ===== Letter Grid =====
@@ -524,14 +505,12 @@ async function selectLetter(letter) {
         state.buzzedPlayerName = '';
         state.secondChance = false;
 
-        // Send to server with current section info
         socket.emit('send-question', {
             letter,
             question: q.q,
             answer: q.a
         });
 
-        // Show question on host screen
         state.questionCount++;
         $('current-letter-display').textContent = letter;
 
@@ -544,7 +523,6 @@ async function selectLetter(letter) {
         $('question-text').textContent = q.q;
         $('answer-text').textContent = q.a;
 
-        // Reset UI
         $('answer-area').hidden = true;
         $('buzzer-result').hidden = true;
         $('buzzer-result').className = 'buzzer-result';
@@ -593,18 +571,16 @@ $('btn-show-answer').addEventListener('click', () => {
 });
 
 $('btn-correct').addEventListener('click', () => {
+    playCorrectSound();
+    socket.emit('play-sound', { sound: 'correct' });
+
     if (state.currentSection === 1) {
-        // General mode - server handles scoring
         socket.emit('judge-correct');
-        playCorrectSound();
     } else {
-        // Teams mode
         if (!state.buzzedTeam) return;
         const team = state.buzzedTeam === 1 ? state.team1 : state.team2;
         team.score++;
         updateAllScoreDisplays();
-        playCorrectSound();
-
         socket.emit('judge-correct');
         announce(`إجابة صحيحة! نقطة لـ ${team.name}`);
     }
@@ -624,11 +600,10 @@ $('btn-correct').addEventListener('click', () => {
 
 $('btn-wrong').addEventListener('click', () => {
     playWrongSound();
+    socket.emit('play-sound', { sound: 'wrong' });
 
     if (state.currentSection === 1) {
-        // General mode: always give chance to next person via server
         socket.emit('judge-wrong');
-
         $('host-controls').hidden = true;
         $('buzzer-result').hidden = true;
         $('waiting-buzz').hidden = false;
@@ -636,10 +611,8 @@ $('btn-wrong').addEventListener('click', () => {
             `❌ ${state.buzzedPlayerName} أخطأ! الفرصة للباقي...`;
         state.buzzedTeam = null;
         state.buzzedPlayerName = '';
-
         announce('إجابة خاطئة. الفرصة للباقي');
     } else {
-        // Teams mode
         if (!state.buzzedTeam) return;
 
         if (!state.secondChance) {
@@ -660,7 +633,6 @@ $('btn-wrong').addEventListener('click', () => {
             announce(`إجابة خاطئة من ${wrongTeamName}. الفرصة لـ ${otherName}`);
         } else {
             socket.emit('judge-wrong');
-
             $('host-controls').hidden = true;
             $('answer-area').hidden = false;
             announce(`إجابة خاطئة. الجواب: ${state.currentQuestion.a}`);
@@ -754,12 +726,6 @@ function showLetterSelection() {
     showScreen('letter');
 }
 
-// ===== Player Chose Letter (from their device) =====
-socket.on('load-letter-question', async ({ letter }) => {
-    if (state.usedLetters.has(letter)) return;
-    await selectLetter(letter);
-});
-
 // ===== End Section 1 -> Transition to Section 2 =====
 $('end-section1-btn').addEventListener('click', () => {
     if (confirm('هل تريد إنهاء القسم الأول والانتقال لمسابقة الفريقين؟')) {
@@ -768,10 +734,8 @@ $('end-section1-btn').addEventListener('click', () => {
 });
 
 function transitionToSection2() {
-    // Save section 1 used letters
     state.usedLettersSection1 = new Set(state.usedLetters);
 
-    // Show transition screen
     $('transition-team1').textContent = state.team1.name;
     $('transition-team2').textContent = state.team2.name;
 
@@ -815,7 +779,6 @@ function endGame() {
     socket.emit('end-game');
 
     if (state.currentSection === 1) {
-        // Ended during section 1 - show individual rankings
         const sorted = getPlayerRanking();
         $('team-results-area').hidden = true;
         const rankArea = $('ranking-list-area');
@@ -837,8 +800,11 @@ function endGame() {
         $('results-title').textContent = 'انتهت المسابقة';
         $('results-subtitle').textContent = 'القسم الأول: المسابقة العامة';
         $('results-icon').textContent = '\ud83c\udfc6';
+
+        // Play win sound for ending general section
+        playWinnerSound();
+        socket.emit('play-sound', { sound: 'win' });
     } else {
-        // Section 2 ended - show team results with applause
         $('team-results-area').hidden = false;
         $('ranking-list-area').hidden = true;
 
@@ -873,9 +839,9 @@ function endGame() {
         $('results-subtitle').textContent = subtitle;
         $('results-icon').textContent = icon;
 
-        // Auto applause for the winner in section 2
         playApplauseSound();
         playWinnerSound();
+        socket.emit('play-sound', { sound: 'win' });
     }
 
     showScreen('results');
@@ -884,7 +850,7 @@ function endGame() {
 
 // ===== New Game =====
 $('btn-new-game').addEventListener('click', () => {
-    state.currentSection = 1;
+    state.currentSection = state.enableSection1 ? 1 : 2;
     state.team1.score = 0;
     state.team2.score = 0;
     state.usedLetters.clear();
@@ -902,5 +868,5 @@ $('btn-new-game').addEventListener('click', () => {
 
 // ===== Init =====
 document.addEventListener('DOMContentLoaded', () => {
-    $('team1-name').focus();
+    if ($('team1-name')) $('team1-name').focus();
 });
