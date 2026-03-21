@@ -9,6 +9,11 @@ const io = new Server(server);
 
 app.use(express.static(__dirname));
 
+// ===== Health Check =====
+app.get('/healthz', (req, res) => {
+    res.status(200).send('OK');
+});
+
 // ===== Get Local Network IP =====
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
