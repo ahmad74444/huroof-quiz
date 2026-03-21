@@ -120,8 +120,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const roomCode = params.get('room');
     if (roomCode) {
         $('room-code-input').value = roomCode.toUpperCase();
+        // Auto-check room info
+        setTimeout(() => checkRoomInfo(roomCode.toUpperCase()), 500);
     }
     $('room-code-input').focus();
+});
+
+// ===== Check Room Info (show/hide team selection) =====
+let checkRoomTimeout = null;
+$('room-code-input').addEventListener('input', () => {
+    clearTimeout(checkRoomTimeout);
+    const code = $('room-code-input').value.trim().toUpperCase();
+    if (code.length >= 5) {
+        checkRoomTimeout = setTimeout(() => checkRoomInfo(code), 300);
+    }
+});
+
+function checkRoomInfo(code) {
+    socket.emit('check-room', { code });
+}
+
+socket.on('room-info', ({ exists, enableSection2, team1Name, team2Name }) => {
+    if (exists) {
+        if (enableSection2) {
+            $('team-select-field').style.display = '';
+            if (team1Name) $('team1-label').textContent = team1Name;
+            if (team2Name) $('team2-label').textContent = team2Name;
+        } else {
+            $('team-select-field').style.display = 'none';
+        }
+    }
 });
 
 // ===== Team Selection =====
@@ -138,14 +166,17 @@ function selectTeam(team) {
 $('join-btn').addEventListener('click', () => {
     const code = $('room-code-input').value.trim().toUpperCase();
     const name = $('player-name-input').value.trim();
-    const team = parseInt($('selected-team').value);
+    const team = parseInt($('selected-team').value) || 0;
 
     if (!code) { showJoinError('أدخل رمز الغرفة'); return; }
     if (!name) { showJoinError('أدخل اسمك'); return; }
-    if (!team) { showJoinError('اختر فريقك'); return; }
+
+    // Only require team if team-select is visible (section 2 enabled)
+    const teamFieldVisible = $('team-select-field').style.display !== 'none';
+    if (teamFieldVisible && !team) { showJoinError('اختر فريقك'); return; }
 
     $('join-error').hidden = true;
-    socket.emit('join-room', { code, playerName: name, team });
+    socket.emit('join-room', { code, playerName: name, team: team || 1 });
 });
 
 function showJoinError(msg) {

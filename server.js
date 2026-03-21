@@ -83,6 +83,22 @@ io.on('connection', (socket) => {
         console.log(`Room ${code} created by ${socket.id} (S1:${rooms[code].enableSection1} S2:${rooms[code].enableSection2})`);
     });
 
+    // ===== Check Room (for player pre-join info) =====
+    socket.on('check-room', ({ code }) => {
+        code = (code || '').toUpperCase().trim();
+        const room = rooms[code];
+        if (!room) {
+            socket.emit('room-info', { exists: false });
+        } else {
+            socket.emit('room-info', {
+                exists: true,
+                enableSection2: room.enableSection2,
+                team1Name: room.team1.name,
+                team2Name: room.team2.name
+            });
+        }
+    });
+
     // ===== Join Room =====
     socket.on('join-room', ({ code, playerName, team }) => {
         code = code.toUpperCase().trim();

@@ -23,26 +23,13 @@
                 <p class="subtitle">أنشئ غرفة مسابقة وشارك الرابط مع المتسابقين</p>
             </div>
 
-            <div class="section-info-card">
-                <h2 class="section-info-title">📋 اختر أقسام المسابقة</h2>
-                <div class="section-checkboxes">
-                    <label class="section-checkbox-label section-checkbox-1">
-                        <input type="checkbox" id="enable-section1" checked>
-                        <span class="checkbox-custom"></span>
-                        <span class="checkbox-content">
-                            <span class="section-badge section-badge-1">القسم ١</span>
-                            <span class="checkbox-desc">مسابقة عامة - أي شخص يضغط البازر يجيب</span>
-                        </span>
-                    </label>
-                    <label class="section-checkbox-label section-checkbox-2">
-                        <input type="checkbox" id="enable-section2" checked>
-                        <span class="checkbox-custom"></span>
-                        <span class="checkbox-content">
-                            <span class="section-badge section-badge-2">القسم ٢</span>
-                            <span class="checkbox-desc">مسابقة فريقين - فريقان يتنافسان</span>
-                        </span>
-                    </label>
-                </div>
+            <div class="field" style="max-width: 400px; margin: 0 auto 1.5rem;">
+                <label for="section-mode">اختر نوع المسابقة</label>
+                <select id="section-mode">
+                    <option value="both">القسمين معاً (عام + فريقين)</option>
+                    <option value="section1">القسم الأول فقط (مسابقة عامة)</option>
+                    <option value="section2">القسم الثاني فقط (مسابقة فريقين)</option>
+                </select>
             </div>
 
             <div id="teams-setup-area" class="teams-setup">

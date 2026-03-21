@@ -210,34 +210,22 @@ function getRandomQuestion(letter) {
     return questions[idx];
 }
 
-// ===== Section Checkbox Toggle =====
-function updateSectionCheckboxes() {
-    state.enableSection1 = $('enable-section1').checked;
-    state.enableSection2 = $('enable-section2').checked;
+// ===== Section Mode Select =====
+function updateSectionMode() {
+    const mode = $('section-mode').value;
+    state.enableSection1 = (mode === 'both' || mode === 'section1');
+    state.enableSection2 = (mode === 'both' || mode === 'section2');
 
     // Show/hide teams setup and question count based on section 2
     $('teams-setup-area').style.display = state.enableSection2 ? 'flex' : 'none';
     $('max-questions-area').style.display = state.enableSection2 ? 'block' : 'none';
-
-    // Must have at least one section selected
-    if (!state.enableSection1 && !state.enableSection2) {
-        // Re-check the one they just unchecked
-        if (!$('enable-section1').checked) $('enable-section1').checked = true;
-        else $('enable-section2').checked = true;
-        state.enableSection1 = $('enable-section1').checked;
-        state.enableSection2 = $('enable-section2').checked;
-        alert('يجب اختيار قسم واحد على الأقل');
-        updateSectionCheckboxes();
-    }
 }
 
-$('enable-section1').addEventListener('change', updateSectionCheckboxes);
-$('enable-section2').addEventListener('change', updateSectionCheckboxes);
+$('section-mode').addEventListener('change', updateSectionMode);
 
 // ===== Create Room =====
 $('create-room-btn').addEventListener('click', () => {
-    state.enableSection1 = $('enable-section1').checked;
-    state.enableSection2 = $('enable-section2').checked;
+    updateSectionMode();
 
     if (state.enableSection2) {
         const name1 = $('team1-name').value.trim();
