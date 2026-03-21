@@ -24,20 +24,28 @@
             </div>
 
             <div class="section-info-card">
-                <h2 class="section-info-title">📋 أقسام المسابقة</h2>
-                <div class="section-info-items">
-                    <div class="section-info-item">
-                        <span class="section-badge section-badge-1">القسم ١</span>
-                        <span>مسابقة عامة - أي شخص يضغط البازر يجيب</span>
-                    </div>
-                    <div class="section-info-item">
-                        <span class="section-badge section-badge-2">القسم ٢</span>
-                        <span>مسابقة فريقين - فريقان يتنافسان</span>
-                    </div>
+                <h2 class="section-info-title">📋 اختر أقسام المسابقة</h2>
+                <div class="section-checkboxes">
+                    <label class="section-checkbox-label section-checkbox-1">
+                        <input type="checkbox" id="enable-section1" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="checkbox-content">
+                            <span class="section-badge section-badge-1">القسم ١</span>
+                            <span class="checkbox-desc">مسابقة عامة - أي شخص يضغط البازر يجيب</span>
+                        </span>
+                    </label>
+                    <label class="section-checkbox-label section-checkbox-2">
+                        <input type="checkbox" id="enable-section2" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="checkbox-content">
+                            <span class="section-badge section-badge-2">القسم ٢</span>
+                            <span class="checkbox-desc">مسابقة فريقين - فريقان يتنافسان</span>
+                        </span>
+                    </label>
                 </div>
             </div>
 
-            <div class="teams-setup">
+            <div id="teams-setup-area" class="teams-setup">
                 <fieldset class="team-card team1-card">
                     <legend>الفريق الأول</legend>
                     <div class="field">
@@ -57,7 +65,7 @@
                 </fieldset>
             </div>
 
-            <div class="field" style="max-width: 400px; margin: 0 auto 1.5rem;">
+            <div class="field" id="max-questions-area" style="max-width: 400px; margin: 0 auto 1.5rem;">
                 <label for="max-questions">عدد أسئلة القسم الثاني (الفريقين)</label>
                 <select id="max-questions">
                     <option value="5">5 أسئلة</option>

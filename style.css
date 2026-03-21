@@ -1319,20 +1319,102 @@ h1 {
     margin-bottom: 1rem;
 }
 
-.section-info-items {
+.section-checkboxes {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
 }
 
-.section-info-item {
+.section-checkbox-label {
     display: flex;
     align-items: center;
     gap: 1rem;
-    padding: 0.5rem 0;
+    padding: 1rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+    border: 2px solid var(--border-card);
+    background: transparent;
+}
+
+.section-checkbox-label:hover {
+    background: var(--bg-card-hover);
+}
+
+.section-checkbox-label input[type="checkbox"] {
+    display: none;
+}
+
+.checkbox-custom {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border: 2px solid var(--text-muted);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    position: relative;
+}
+
+.checkbox-custom::after {
+    content: '✓';
+    font-size: 1.1rem;
+    font-weight: 900;
+    opacity: 0;
+    transition: var(--transition);
+}
+
+.section-checkbox-label input:checked ~ .checkbox-custom {
+    border-color: var(--gold);
+    background: var(--gold);
+}
+
+.section-checkbox-label input:checked ~ .checkbox-custom::after {
+    opacity: 1;
+    color: #000;
+}
+
+.section-checkbox-1 input:checked ~ .checkbox-custom {
+    border-color: #818cf8;
+    background: #818cf8;
+}
+
+.section-checkbox-2 input:checked ~ .checkbox-custom {
+    border-color: #34d399;
+    background: #34d399;
+}
+
+.section-checkbox-label input:checked ~ .checkbox-content {
+    opacity: 1;
+}
+
+.section-checkbox-label input:not(:checked) ~ .checkbox-content {
+    opacity: 0.5;
+}
+
+.checkbox-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transition: var(--transition);
+}
+
+.checkbox-desc {
     font-weight: 600;
     color: var(--text-secondary);
+    font-size: 0.95rem;
 }
+
+.section-checkbox-1 input:checked ~ .checkbox-content .checkbox-desc {
+    color: #a5b4fc;
+}
+
+.section-checkbox-2 input:checked ~ .checkbox-content .checkbox-desc {
+    color: #6ee7b7;
+}
+
 
 .section-badge {
     display: inline-flex;

@@ -33,6 +33,8 @@ try {
 // ===== Game State =====
 const state = {
     roomCode: '',
+    enableSection1: true,
+    enableSection2: true,
     currentSection: 1, // 1 = general, 2 = teams
     team1: { name: '', score: 0 },
     team2: { name: '', score: 0 },
@@ -208,24 +210,58 @@ function getRandomQuestion(letter) {
     return questions[idx];
 }
 
+// ===== Section Checkbox Toggle =====
+function updateSectionCheckboxes() {
+    state.enableSection1 = $('enable-section1').checked;
+    state.enableSection2 = $('enable-section2').checked;
+
+    // Show/hide teams setup and question count based on section 2
+    $('teams-setup-area').style.display = state.enableSection2 ? 'flex' : 'none';
+    $('max-questions-area').style.display = state.enableSection2 ? 'block' : 'none';
+
+    // Must have at least one section selected
+    if (!state.enableSection1 && !state.enableSection2) {
+        // Re-check the one they just unchecked
+        if (!$('enable-section1').checked) $('enable-section1').checked = true;
+        else $('enable-section2').checked = true;
+        state.enableSection1 = $('enable-section1').checked;
+        state.enableSection2 = $('enable-section2').checked;
+        alert('يجب اختيار قسم واحد على الأقل');
+        updateSectionCheckboxes();
+    }
+}
+
+$('enable-section1').addEventListener('change', updateSectionCheckboxes);
+$('enable-section2').addEventListener('change', updateSectionCheckboxes);
+
 // ===== Create Room =====
 $('create-room-btn').addEventListener('click', () => {
-    const name1 = $('team1-name').value.trim();
-    const name2 = $('team2-name').value.trim();
-    if (!name1 || !name2) {
-        alert('يرجى إدخال أسماء الفريقين');
-        if (!name1) $('team1-name').focus();
-        else $('team2-name').focus();
-        return;
+    state.enableSection1 = $('enable-section1').checked;
+    state.enableSection2 = $('enable-section2').checked;
+
+    if (state.enableSection2) {
+        const name1 = $('team1-name').value.trim();
+        const name2 = $('team2-name').value.trim();
+        if (!name1 || !name2) {
+            alert('يرجى إدخال أسماء الفريقين');
+            if (!name1) $('team1-name').focus();
+            else $('team2-name').focus();
+            return;
+        }
+        state.team1.name = name1;
+        state.team2.name = name2;
+        state.maxQuestions = parseInt($('max-questions').value);
+    } else {
+        state.team1.name = '';
+        state.team2.name = '';
     }
-    state.team1.name = name1;
-    state.team2.name = name2;
-    state.maxQuestions = parseInt($('max-questions').value);
 
     socket.emit('create-room', {
-        team1Name: name1,
-        team2Name: name2,
-        maxQuestions: state.maxQuestions
+        team1Name: state.team1.name,
+        team2Name: state.team2.name,
+        maxQuestions: state.maxQuestions,
+        enableSection1: state.enableSection1,
+        enableSection2: state.enableSection2
     });
 });
 
@@ -334,8 +370,8 @@ function updateSectionIndicators() {
     $('game-section-indicator').textContent = textSm;
     $('game-section-indicator').className = `current-section-badge-sm section-${section}`;
 
-    // Show/hide section 1 end button
-    $('end-section1-btn').style.display = section === 1 ? 'inline-flex' : 'none';
+    // Show/hide section 1 end button (only if section 2 is also enabled)
+    $('end-section1-btn').style.display = (section === 1 && state.enableSection2) ? 'inline-flex' : 'none';
 
     // Show/hide sound controls in section 1
     $('sound-controls').hidden = section !== 1;
@@ -345,7 +381,6 @@ function updateSectionIndicators() {
 $('start-game-btn').addEventListener('click', () => {
     socket.emit('start-game');
     state.gameActive = true;
-    state.currentSection = 1;
     state.questionCount = 0;
     state.team1.score = 0;
     state.team2.score = 0;
@@ -354,16 +389,33 @@ $('start-game-btn').addEventListener('click', () => {
     state.usedLettersSection1.clear();
     state.choosingTeam = null;
 
-    updateSectionIndicators();
-    updateAllScoreDisplays();
-    generateLetterGrid();
+    if (state.enableSection1) {
+        // Start with section 1 (general)
+        state.currentSection = 1;
+        updateSectionIndicators();
+        updateAllScoreDisplays();
+        generateLetterGrid();
 
-    $('letter-screen-title').textContent = 'اختر حرفاً للسؤال الأول';
-    $('letter-screen-subtitle').textContent = 'القسم الأول: المسابقة العامة';
-    $('question-progress').textContent = '';
+        $('letter-screen-title').textContent = 'اختر حرفاً للسؤال الأول';
+        $('letter-screen-subtitle').textContent = 'القسم الأول: المسابقة العامة';
+        $('question-progress').textContent = '';
 
-    showScreen('letter');
-    announce('بدأت المسابقة! القسم الأول: المسابقة العامة. اختر حرفاً.');
+        showScreen('letter');
+        announce('بدأت المسابقة! القسم الأول: المسابقة العامة. اختر حرفاً.');
+    } else {
+        // Skip section 1, start directly with section 2 (teams)
+        state.currentSection = 2;
+        updateSectionIndicators();
+        updateAllScoreDisplays();
+        generateLetterGrid();
+
+        $('letter-screen-title').textContent = 'اختر حرفاً للسؤال الأول';
+        $('letter-screen-subtitle').textContent = 'القسم الثاني: مسابقة الفريقين';
+        $('question-progress').textContent = `السؤال 1 من ${state.maxQuestions}`;
+
+        showScreen('letter');
+        announce('بدأت المسابقة! مسابقة الفريقين. اختر حرفاً.');
+    }
 });
 
 // ===== Update Team Names =====

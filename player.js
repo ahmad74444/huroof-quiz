@@ -157,7 +157,7 @@ socket.on('join-error', (msg) => {
     showJoinError(msg);
 });
 
-socket.on('joined-room', ({ team1Name, team2Name, team, gameStarted, currentSection }) => {
+socket.on('joined-room', ({ team1Name, team2Name, team, gameStarted, currentSection, enableSection1, enableSection2 }) => {
     pState.myTeam = team;
     pState.currentSection = currentSection || 1;
     pState.team1Name = team1Name;

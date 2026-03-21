@@ -46,17 +46,19 @@ io.on('connection', (socket) => {
     console.log('Connected:', socket.id);
 
     // ===== Create Room =====
-    socket.on('create-room', ({ team1Name, team2Name, maxQuestions }) => {
+    socket.on('create-room', ({ team1Name, team2Name, maxQuestions, enableSection1, enableSection2 }) => {
         let code = generateRoomCode();
         while (rooms[code]) code = generateRoomCode();
 
         rooms[code] = {
             host: socket.id,
-            currentSection: 1, // 1 = general, 2 = teams
+            enableSection1: enableSection1 !== false,
+            enableSection2: enableSection2 !== false,
+            currentSection: (enableSection1 !== false) ? 1 : 2,
             team1: { name: team1Name || '', score: 0 },
             team2: { name: team2Name || '', score: 0 },
             players: [],
-            playerScores: {}, // { socketId: { name, score } }
+            playerScores: {},
             usedLetters: [],
             currentQuestion: '',
             currentAnswer: '',
@@ -66,7 +68,7 @@ io.on('connection', (socket) => {
             secondChance: false,
             secondChanceExcluded: [],
             questionCount: 0,
-            maxQuestions: maxQuestions || 10, // for section 2
+            maxQuestions: maxQuestions || 10,
             choosingTeam: null,
             choosingPlayerId: null,
             gameStarted: false,
@@ -78,7 +80,7 @@ io.on('connection', (socket) => {
         socket.isHost = true;
 
         socket.emit('room-created', { code });
-        console.log(`Room ${code} created by ${socket.id}`);
+        console.log(`Room ${code} created by ${socket.id} (S1:${rooms[code].enableSection1} S2:${rooms[code].enableSection2})`);
     });
 
     // ===== Join Room =====
@@ -109,7 +111,9 @@ io.on('connection', (socket) => {
             team2Name: room.team2.name,
             team: socket.playerTeam,
             gameStarted: room.gameStarted,
-            currentSection: room.currentSection
+            currentSection: room.currentSection,
+            enableSection1: room.enableSection1,
+            enableSection2: room.enableSection2
         });
 
         // Notify host
