@@ -68,29 +68,119 @@ function playSound(name) {
     }
 }
 
-// ===== Mic Audio Playback =====
-let micAudioContext = null;
+// ===== Mic Audio Playback (Real-time via MediaSource) =====
+let mediaSource = null;
+let sourceBuffer = null;
+let micAudioEl = null;
+let micPendingChunks = [];
+let micSourceOpen = false;
+
+function initMicStream() {
+    // Clean up previous
+    cleanupMicStream();
+
+    mediaSource = new MediaSource();
+    micAudioEl = new Audio();
+    micAudioEl.src = URL.createObjectURL(mediaSource);
+    micPendingChunks = [];
+    micSourceOpen = false;
+
+    mediaSource.addEventListener('sourceopen', () => {
+        try {
+            sourceBuffer = mediaSource.addSourceBuffer('audio/webm;codecs=opus');
+            micSourceOpen = true;
+            sourceBuffer.addEventListener('updateend', flushMicChunks);
+            flushMicChunks();
+        } catch (e) {
+            console.warn('MediaSource not supported, falling back to buffered mode');
+            micSourceOpen = false;
+        }
+    });
+
+    micAudioEl.play().catch(() => {});
+}
+
+function flushMicChunks() {
+    if (!sourceBuffer || sourceBuffer.updating || micPendingChunks.length === 0) return;
+    const chunk = micPendingChunks.shift();
+    try {
+        sourceBuffer.appendBuffer(chunk);
+    } catch (e) {
+        // Buffer full or error - skip chunk
+    }
+}
+
+function cleanupMicStream() {
+    if (micAudioEl) {
+        micAudioEl.pause();
+        if (micAudioEl.src) URL.revokeObjectURL(micAudioEl.src);
+        micAudioEl = null;
+    }
+    if (mediaSource && mediaSource.readyState === 'open') {
+        try { mediaSource.endOfStream(); } catch (e) {}
+    }
+    mediaSource = null;
+    sourceBuffer = null;
+    micPendingChunks = [];
+    micSourceOpen = false;
+}
+
+// Fallback: buffered playback if MediaSource doesn't work
+let micFallbackChunks = [];
+let micUsingFallback = false;
 
 socket.on('mic-started', () => {
     $('mic-indicator').hidden = false;
     announce('المسؤول يتحدث');
+
+    // Check MediaSource support
+    if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported('audio/webm;codecs=opus')) {
+        micUsingFallback = false;
+        initMicStream();
+    } else {
+        micUsingFallback = true;
+        micFallbackChunks = [];
+    }
 });
 
 socket.on('mic-stopped', () => {
     $('mic-indicator').hidden = true;
+
+    if (micUsingFallback) {
+        // Fallback: play all at once
+        if (micFallbackChunks.length > 0) {
+            const blob = new Blob(micFallbackChunks, { type: 'audio/webm;codecs=opus' });
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.play().catch(() => {});
+            audio.onended = () => URL.revokeObjectURL(url);
+            micFallbackChunks = [];
+        }
+    } else {
+        // End the media source stream
+        if (mediaSource && mediaSource.readyState === 'open') {
+            // Wait for buffer to finish then end stream
+            const tryEnd = () => {
+                if (sourceBuffer && sourceBuffer.updating) {
+                    setTimeout(tryEnd, 100);
+                } else {
+                    try { mediaSource.endOfStream(); } catch (e) {}
+                }
+            };
+            tryEnd();
+        }
+    }
 });
 
-socket.on('mic-audio', async (data) => {
-    try {
-        if (!micAudioContext) micAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const blob = new Blob([data], { type: 'audio/webm;codecs=opus' });
-        const arrayBuffer = await blob.arrayBuffer();
-        const audioBuffer = await micAudioContext.decodeAudioData(arrayBuffer);
-        const source = micAudioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(micAudioContext.destination);
-        source.start();
-    } catch (e) {}
+socket.on('mic-audio', (data) => {
+    const chunk = new Uint8Array(data);
+
+    if (micUsingFallback) {
+        micFallbackChunks.push(chunk);
+    } else {
+        micPendingChunks.push(chunk);
+        flushMicChunks();
+    }
 });
 
 // ===== Auto-fill room code from URL =====
@@ -242,13 +332,43 @@ socket.on('game-started', ({ currentSection, team1Name, team2Name, maxQuestions 
     announce('بدأت المسابقة! انتظر حتى يختار المسؤول الحرف.');
 });
 
+// ===== Player Countdown Timer =====
+let pTimerInterval = null;
+let pTimeLeft = 0;
+
+function startPlayerCountdown(seconds) {
+    stopPlayerCountdown();
+    if (!seconds || seconds <= 0) {
+        $('p-countdown-display').hidden = true;
+        return;
+    }
+    pTimeLeft = seconds;
+    $('p-countdown-display').hidden = false;
+    $('p-countdown-number').textContent = pTimeLeft;
+    $('p-countdown-number').classList.remove('countdown-urgent');
+
+    pTimerInterval = setInterval(() => {
+        pTimeLeft--;
+        $('p-countdown-number').textContent = Math.max(0, pTimeLeft);
+        if (pTimeLeft <= 5) $('p-countdown-number').classList.add('countdown-urgent');
+        if (pTimeLeft <= 0) stopPlayerCountdown();
+    }, 1000);
+}
+
+function stopPlayerCountdown() {
+    if (pTimerInterval) { clearInterval(pTimerInterval); pTimerInterval = null; }
+    $('p-countdown-display').hidden = true;
+    $('p-countdown-number').classList.remove('countdown-urgent');
+}
+
 // ===== Question Shown =====
-socket.on('question-shown', ({ letter, question, showQuestion, questionNumber, maxQuestions, currentSection, team1Score, team2Score, playerScores }) => {
+socket.on('question-shown', ({ letter, question, showQuestion, questionNumber, maxQuestions, currentSection, team1Score, team2Score, playerScores, buzzerTimeout }) => {
     pState.currentSection = currentSection || pState.currentSection;
     pState.team1Score = team1Score;
     pState.team2Score = team2Score;
     if (playerScores) pState.playerScores = playerScores;
     pState.canBuzz = true;
+    pState.buzzerTimeout = buzzerTimeout || 0;
 
     if (!pState.usedLetters.includes(letter)) {
         pState.usedLetters.push(letter);
@@ -261,7 +381,6 @@ socket.on('question-shown', ({ letter, question, showQuestion, questionNumber, m
         $('p-question-counter').textContent = `السؤال ${questionNumber} من ${maxQuestions}`;
     }
 
-    // Show or hide question based on host setting
     if (showQuestion && question) {
         $('p-question-area').hidden = false;
         $('p-question-text').textContent = question;
@@ -270,7 +389,6 @@ socket.on('question-shown', ({ letter, question, showQuestion, questionNumber, m
         $('p-question-text').textContent = '';
     }
 
-    // Reset UI
     $('p-answer-area').hidden = true;
     $('p-buzzer-result').hidden = true;
     $('p-status').hidden = true;
@@ -281,6 +399,7 @@ socket.on('question-shown', ({ letter, question, showQuestion, questionNumber, m
     buzzerBtn.classList.add('buzzer-ready');
     $('p-buzzer-area').hidden = false;
 
+    startPlayerCountdown(buzzerTimeout);
     updateSectionIndicator();
     updatePlayerScores();
     showScreen('game');

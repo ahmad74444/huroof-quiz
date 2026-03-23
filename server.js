@@ -48,7 +48,7 @@ io.on('connection', (socket) => {
     console.log('Connected:', socket.id);
 
     // ===== Create Room =====
-    socket.on('create-room', ({ team1Name, team2Name, maxQuestions, enableSection1, enableSection2 }) => {
+    socket.on('create-room', ({ team1Name, team2Name, maxQuestions, enableSection1, enableSection2, buzzerTimeout }) => {
         let code = generateRoomCode();
         while (rooms[code]) code = generateRoomCode();
 
@@ -57,7 +57,8 @@ io.on('connection', (socket) => {
             enableSection1: enableSection1 !== false,
             enableSection2: enableSection2 !== false,
             currentSection: (enableSection1 !== false) ? 1 : 2,
-            showQuestionToPlayers: true, // default: show question
+            showQuestionToPlayers: true,
+            buzzerTimeout: buzzerTimeout || 0, // 0 = no timer
             team1: { name: team1Name || '', score: 0 },
             team2: { name: team2Name || '', score: 0 },
             players: [],
@@ -200,7 +201,8 @@ io.on('connection', (socket) => {
             currentSection: room.currentSection,
             team1Score: room.team1.score,
             team2Score: room.team2.score,
-            playerScores: room.playerScores
+            playerScores: room.playerScores,
+            buzzerTimeout: room.buzzerTimeout
         });
     });
 
@@ -237,12 +239,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ===== Host Shows Answer =====
+    // ===== Host Shows Answer (host only) =====
     socket.on('show-answer', () => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
 
-        io.to(socket.roomCode).emit('answer-revealed', {
+        // Only send to host, NOT to players
+        socket.emit('answer-revealed', {
             answer: room.currentAnswer
         });
     });

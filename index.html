@@ -62,6 +62,19 @@
                 </select>
             </div>
 
+            <div class="field" style="max-width: 400px; margin: 0 auto 1.5rem;">
+                <label for="buzzer-timeout">مهلة البازر (ثواني)</label>
+                <select id="buzzer-timeout">
+                    <option value="0">بدون مهلة</option>
+                    <option value="10">10 ثواني</option>
+                    <option value="15" selected>15 ثانية</option>
+                    <option value="20">20 ثانية</option>
+                    <option value="30">30 ثانية</option>
+                    <option value="45">45 ثانية</option>
+                    <option value="60">60 ثانية</option>
+                </select>
+            </div>
+
             <button id="create-room-btn" class="btn btn-primary btn-lg" style="display:block; width:100%; max-width:400px; margin:0 auto;">
                 🚀 إنشاء غرفة المسابقة
             </button>
@@ -186,6 +199,22 @@
 
             <div class="waiting-buzz" id="waiting-buzz">
                 <p class="waiting-text">⏳ في انتظار ضغط البازر من المتسابقين...</p>
+            </div>
+
+            <!-- Question Countdown Timer -->
+            <div class="question-timer" id="question-timer" hidden>
+                <div class="timer-circle" id="timer-circle">
+                    <svg class="timer-svg" viewBox="0 0 120 120">
+                        <circle class="timer-track" cx="60" cy="60" r="54" />
+                        <circle class="timer-progress" id="timer-progress" cx="60" cy="60" r="54" />
+                    </svg>
+                    <span class="timer-number" id="timer-number">15</span>
+                </div>
+                <div class="timer-controls">
+                    <button class="btn btn-timer-adjust" id="btn-timer-minus" aria-label="إنقاص 5 ثواني">-5</button>
+                    <button class="btn btn-timer-pause" id="btn-timer-pause" aria-label="إيقاف مؤقت">⏸</button>
+                    <button class="btn btn-timer-adjust" id="btn-timer-plus" aria-label="زيادة 5 ثواني">+5</button>
+                </div>
             </div>
 
             <div class="buzzer-result" id="buzzer-result" hidden aria-live="assertive">

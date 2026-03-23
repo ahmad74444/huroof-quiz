@@ -37,6 +37,7 @@ const state = {
     enableSection2: true,
     currentSection: 1,
     showQuestionToPlayers: true,
+    buzzerTimeout: 15,
     team1: { name: '', score: 0 },
     team2: { name: '', score: 0 },
     players: [],
@@ -135,11 +136,19 @@ async function startMic() {
             }
         };
 
-        mediaRecorder.start(200); // send chunks every 200ms
+        // Signal players first so they prepare MediaSource before chunks arrive
+        socket.emit('mic-started');
         micActive = true;
         $('btn-mic').classList.add('mic-active');
         $('mic-label').textContent = 'إيقاف المايك';
-        socket.emit('mic-started');
+
+        // Small delay to let players set up, then start recording
+        setTimeout(() => {
+            if (mediaRecorder && mediaRecorder.state === 'inactive') {
+                mediaRecorder.start(100); // send chunks every 100ms for real-time
+            }
+        }, 300);
+
         announce('تم تشغيل المايكروفون');
     } catch (err) {
         alert('تعذر الوصول للمايكروفون. تأكد من إعطاء الإذن.');
@@ -242,12 +251,15 @@ $('create-room-btn').addEventListener('click', () => {
         state.team2.name = '';
     }
 
+    state.buzzerTimeout = parseInt($('buzzer-timeout').value) || 0;
+
     socket.emit('create-room', {
         team1Name: state.team1.name,
         team2Name: state.team2.name,
         maxQuestions: state.maxQuestions,
         enableSection1: state.enableSection1,
-        enableSection2: state.enableSection2
+        enableSection2: state.enableSection2,
+        buzzerTimeout: state.buzzerTimeout
     });
 });
 
@@ -530,6 +542,9 @@ async function selectLetter(letter) {
         $('waiting-buzz').hidden = false;
         $('waiting-buzz').querySelector('.waiting-text').textContent = '⏳ في انتظار ضغط البازر من المتسابقين...';
 
+        // Start countdown timer
+        startQuestionTimer();
+
         updateSectionIndicators();
         showScreen('game');
         announce(`حرف ${letter}. السؤال ${state.questionCount}: ${q.q}`);
@@ -538,11 +553,135 @@ async function selectLetter(letter) {
     }
 }
 
+// ===== Question Timer =====
+let timerInterval = null;
+let timerTimeLeft = 0;
+let timerTotalTime = 0;
+let timerPaused = false;
+const TIMER_CIRCUMFERENCE = 2 * Math.PI * 54; // 339.292
+
+function startQuestionTimer() {
+    stopQuestionTimer();
+    if (!state.buzzerTimeout || state.buzzerTimeout <= 0) {
+        $('question-timer').hidden = true;
+        return;
+    }
+
+    timerTotalTime = state.buzzerTimeout;
+    timerTimeLeft = timerTotalTime;
+    timerPaused = false;
+    $('question-timer').hidden = false;
+    $('btn-timer-pause').textContent = '⏸';
+    $('btn-timer-pause').classList.remove('paused');
+    updateTimerDisplay();
+
+    timerInterval = setInterval(() => {
+        if (timerPaused) return;
+        timerTimeLeft--;
+        updateTimerDisplay();
+
+        if (timerTimeLeft <= 0) {
+            stopQuestionTimer();
+            onBuzzerTimeout();
+        }
+    }, 1000);
+}
+
+function updateTimerDisplay() {
+    const numEl = $('timer-number');
+    const progressEl = $('timer-progress');
+    numEl.textContent = Math.max(0, timerTimeLeft);
+
+    // Update circular progress
+    const fraction = timerTotalTime > 0 ? timerTimeLeft / timerTotalTime : 0;
+    const offset = TIMER_CIRCUMFERENCE * (1 - fraction);
+    progressEl.style.strokeDasharray = TIMER_CIRCUMFERENCE;
+    progressEl.style.strokeDashoffset = offset;
+
+    // Urgent styling when <= 5 seconds
+    if (timerTimeLeft <= 5) {
+        numEl.classList.add('timer-urgent');
+        progressEl.classList.add('timer-urgent');
+    } else {
+        numEl.classList.remove('timer-urgent');
+        progressEl.classList.remove('timer-urgent');
+    }
+}
+
+function stopQuestionTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+    $('question-timer').hidden = true;
+    timerPaused = false;
+}
+
+// Timer controls
+$('btn-timer-pause').addEventListener('click', () => {
+    timerPaused = !timerPaused;
+    if (timerPaused) {
+        $('btn-timer-pause').textContent = '▶';
+        $('btn-timer-pause').classList.add('paused');
+        announce('تم إيقاف المؤقت');
+    } else {
+        $('btn-timer-pause').textContent = '⏸';
+        $('btn-timer-pause').classList.remove('paused');
+        announce('تم استئناف المؤقت');
+    }
+});
+
+$('btn-timer-plus').addEventListener('click', () => {
+    timerTimeLeft += 5;
+    timerTotalTime += 5;
+    updateTimerDisplay();
+    announce('تم إضافة 5 ثواني');
+});
+
+$('btn-timer-minus').addEventListener('click', () => {
+    timerTimeLeft = Math.max(1, timerTimeLeft - 5);
+    updateTimerDisplay();
+    announce('تم إنقاص 5 ثواني');
+});
+
+function onBuzzerTimeout() {
+    // Time expired and nobody buzzed
+    $('waiting-buzz').hidden = true;
+    $('host-controls').hidden = true;
+
+    if (state.secondChance) {
+        // Second chance also timed out
+        socket.emit('judge-wrong');
+        $('answer-area').hidden = false;
+        announce('انتهى الوقت! الجواب: ' + state.currentQuestion.a);
+
+        if (state.currentSection === 2 && state.questionCount >= state.maxQuestions) {
+            setTimeout(() => endGame(), 2000);
+        } else {
+            state.choosingTeam = null;
+            setTimeout(() => showLetterSelection(), 2000);
+        }
+    } else {
+        // First timeout
+        socket.emit('skip-question');
+        $('answer-area').hidden = false;
+        announce('انتهى الوقت! تم تخطي السؤال. الجواب: ' + state.currentQuestion.a);
+
+        if (state.currentSection === 2 && state.questionCount >= state.maxQuestions) {
+            setTimeout(() => endGame(), 2000);
+        } else {
+            state.choosingTeam = null;
+            setTimeout(() => showLetterSelection(), 2000);
+        }
+    }
+}
+
 // ===== Handle Player Buzz =====
 socket.on('player-buzzed', ({ playerName, team, teamName }) => {
     state.buzzedTeam = team;
     state.buzzedPlayerName = playerName;
     playBuzzerSound();
+    stopQuestionTimer();
 
     $('waiting-buzz').hidden = true;
 
@@ -611,6 +750,7 @@ $('btn-wrong').addEventListener('click', () => {
             `❌ ${state.buzzedPlayerName} أخطأ! الفرصة للباقي...`;
         state.buzzedTeam = null;
         state.buzzedPlayerName = '';
+        startQuestionTimer();
         announce('إجابة خاطئة. الفرصة للباقي');
     } else {
         if (!state.buzzedTeam) return;
@@ -629,6 +769,7 @@ $('btn-wrong').addEventListener('click', () => {
             $('waiting-buzz').hidden = false;
             $('waiting-buzz').querySelector('.waiting-text').textContent =
                 `❌ ${wrongTeamName} أخطأ! الفرصة لـ ${otherName}...`;
+            startQuestionTimer();
 
             announce(`إجابة خاطئة من ${wrongTeamName}. الفرصة لـ ${otherName}`);
         } else {
@@ -649,6 +790,7 @@ $('btn-wrong').addEventListener('click', () => {
 
 $('btn-skip').addEventListener('click', () => {
     socket.emit('skip-question');
+    stopQuestionTimer();
 
     $('host-controls').hidden = true;
     $('waiting-buzz').hidden = true;
