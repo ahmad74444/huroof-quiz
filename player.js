@@ -68,121 +68,85 @@ function playSound(name) {
     }
 }
 
-// ===== Mic Audio Playback (Real-time via MediaSource) =====
-let mediaSource = null;
-let sourceBuffer = null;
-let micAudioEl = null;
-let micPendingChunks = [];
-let micSourceOpen = false;
 
-function initMicStream() {
-    // Clean up previous
-    cleanupMicStream();
+// ===== Mic Audio Playback (Chunked Buffered Mode) =====
+// تشغيل الصوت في دفعات صغيرة لضمان عمله على جميع المتصفحات
+let micChunks = [];
+let micActive = false;
+let micPlaybackQueue = [];
+let micIsPlaying = false;
 
-    mediaSource = new MediaSource();
-    micAudioEl = new Audio();
-    micAudioEl.src = URL.createObjectURL(mediaSource);
-    micPendingChunks = [];
-    micSourceOpen = false;
+function playNextMicChunk() {
+    if (micPlaybackQueue.length === 0) {
+        micIsPlaying = false;
+        return;
+    }
 
-    mediaSource.addEventListener('sourceopen', () => {
-        try {
-            sourceBuffer = mediaSource.addSourceBuffer('audio/webm;codecs=opus');
-            micSourceOpen = true;
-            sourceBuffer.addEventListener('updateend', flushMicChunks);
-            flushMicChunks();
-        } catch (e) {
-            console.warn('MediaSource not supported, falling back to buffered mode');
-            micSourceOpen = false;
-        }
+    micIsPlaying = true;
+    const blob = micPlaybackQueue.shift();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+
+    audio.onended = () => {
+        URL.revokeObjectURL(url);
+        playNextMicChunk();
+    };
+
+    audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        playNextMicChunk();
+    };
+
+    audio.play().catch(() => {
+        URL.revokeObjectURL(url);
+        playNextMicChunk();
     });
-
-    micAudioEl.play().catch(() => {});
 }
 
-function flushMicChunks() {
-    if (!sourceBuffer || sourceBuffer.updating || micPendingChunks.length === 0) return;
-    const chunk = micPendingChunks.shift();
-    try {
-        sourceBuffer.appendBuffer(chunk);
-    } catch (e) {
-        // Buffer full or error - skip chunk
+function flushMicBuffer() {
+    if (micChunks.length === 0) return;
+
+    const blob = new Blob(micChunks, { type: 'audio/webm;codecs=opus' });
+    micChunks = [];
+    micPlaybackQueue.push(blob);
+
+    if (!micIsPlaying) {
+        playNextMicChunk();
     }
 }
 
-function cleanupMicStream() {
-    if (micAudioEl) {
-        micAudioEl.pause();
-        if (micAudioEl.src) URL.revokeObjectURL(micAudioEl.src);
-        micAudioEl = null;
-    }
-    if (mediaSource && mediaSource.readyState === 'open') {
-        try { mediaSource.endOfStream(); } catch (e) {}
-    }
-    mediaSource = null;
-    sourceBuffer = null;
-    micPendingChunks = [];
-    micSourceOpen = false;
-}
-
-// Fallback: buffered playback if MediaSource doesn't work
-let micFallbackChunks = [];
-let micUsingFallback = false;
+let micFlushInterval = null;
 
 socket.on('mic-started', () => {
     $('mic-indicator').hidden = false;
     announce('المسؤول يتحدث');
 
-    // Check MediaSource support
-    if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported('audio/webm;codecs=opus')) {
-        micUsingFallback = false;
-        initMicStream();
-    } else {
-        micUsingFallback = true;
-        micFallbackChunks = [];
-    }
+    micActive = true;
+    micChunks = [];
+    micPlaybackQueue = [];
+
+    // تشغيل الصوت كل 1.2 ثانية لتقليل التأخير
+    micFlushInterval = setInterval(flushMicBuffer, 1200);
 });
 
 socket.on('mic-stopped', () => {
     $('mic-indicator').hidden = true;
+    micActive = false;
 
-    if (micUsingFallback) {
-        // Fallback: play all at once
-        if (micFallbackChunks.length > 0) {
-            const blob = new Blob(micFallbackChunks, { type: 'audio/webm;codecs=opus' });
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
-            audio.play().catch(() => {});
-            audio.onended = () => URL.revokeObjectURL(url);
-            micFallbackChunks = [];
-        }
-    } else {
-        // End the media source stream
-        if (mediaSource && mediaSource.readyState === 'open') {
-            // Wait for buffer to finish then end stream
-            const tryEnd = () => {
-                if (sourceBuffer && sourceBuffer.updating) {
-                    setTimeout(tryEnd, 100);
-                } else {
-                    try { mediaSource.endOfStream(); } catch (e) {}
-                }
-            };
-            tryEnd();
-        }
+    if (micFlushInterval) {
+        clearInterval(micFlushInterval);
+        micFlushInterval = null;
     }
+
+    // تشغيل ما تبقى
+    flushMicBuffer();
 });
 
 socket.on('mic-audio', (data) => {
+    if (!micActive) return;
     const chunk = new Uint8Array(data);
-
-    if (micUsingFallback) {
-        micFallbackChunks.push(chunk);
-    } else {
-        micPendingChunks.push(chunk);
-        flushMicChunks();
-    }
+    micChunks.push(chunk);
 });
-
 // ===== Auto-fill room code from URL =====
 document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);

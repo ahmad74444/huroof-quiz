@@ -484,6 +484,8 @@ io.on('connection', (socket) => {
             console.log(`Room ${code} deleted (host left)`);
         } else {
             rooms[code].players = rooms[code].players.filter(p => p.id !== socket.id);
+            // حذف اللاعب من قائمة النقاط أيضاً
+            delete rooms[code].playerScores[socket.id];
             if (rooms[code].host) {
                 io.to(rooms[code].host).emit('player-left', {
                     playerName: socket.playerName,

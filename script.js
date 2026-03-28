@@ -489,10 +489,6 @@ function generateLetterGrid() {
         btn.className = 'letter-btn';
         btn.textContent = letter;
         btn.setAttribute('aria-label', `حرف ${letter}`);
-        if (state.usedLetters.has(letter)) {
-            btn.classList.add('used');
-            btn.setAttribute('aria-disabled', 'true');
-        }
         btn.addEventListener('click', () => selectLetter(letter));
         grid.appendChild(btn);
     });
@@ -500,8 +496,6 @@ function generateLetterGrid() {
 
 // ===== Select Letter =====
 async function selectLetter(letter) {
-    if (state.usedLetters.has(letter)) return;
-
     try {
         await loadLetterQuestions(letter);
         const q = getRandomQuestion(letter);
@@ -512,7 +506,6 @@ async function selectLetter(letter) {
 
         state.currentLetter = letter;
         state.currentQuestion = q;
-        state.usedLetters.add(letter);
         state.buzzedTeam = null;
         state.buzzedPlayerName = '';
         state.secondChance = false;
