@@ -410,10 +410,9 @@ socket.on('player-buzzed', ({ playerName, team, teamName, currentSection }) => {
 });
 
 // ===== Answer Revealed =====
-socket.on('answer-revealed', ({ answer }) => {
-    $('p-answer-area').hidden = false;
-    $('p-answer-text').textContent = answer;
-    announce(`الجواب: ${answer}`);
+// لا تظهر الإجابة للمتسابقين - هذا الحدث يُرسل فقط للمضيف
+socket.on('answer-revealed', () => {
+    // لا شيء - الإجابة لا تظهر للمتسابقين
 });
 
 // ===== Play Sound (from host) =====
@@ -432,8 +431,8 @@ socket.on('answer-correct', (data) => {
     if (data.team2Score !== undefined) pState.team2Score = data.team2Score;
     updatePlayerScores();
 
-    $('p-answer-area').hidden = false;
-    $('p-answer-text').textContent = data.answer;
+    // لا تظهر الإجابة للمتسابقين
+    $('p-answer-area').hidden = true;
     $('p-status').hidden = false;
 
     const section = data.currentSection || pState.currentSection;
@@ -509,8 +508,8 @@ socket.on('both-wrong', (data) => {
     if (data.playerScores) pState.playerScores = data.playerScores;
     updatePlayerScores();
 
-    $('p-answer-area').hidden = false;
-    $('p-answer-text').textContent = data.answer;
+    // لا تظهر الإجابة للمتسابقين
+    $('p-answer-area').hidden = true;
     $('p-status').hidden = false;
 
     const section = data.currentSection || pState.currentSection;
@@ -522,7 +521,7 @@ socket.on('both-wrong', (data) => {
     $('p-status').className = 'player-status wrong-status';
     $('p-buzzer-area').hidden = true;
 
-    announce($('p-status-text').textContent + '. الجواب: ' + data.answer);
+    announce($('p-status-text').textContent);
 
     if (data.isGameOver) return;
 
@@ -540,14 +539,14 @@ socket.on('question-skipped', (data) => {
     if (data.playerScores) pState.playerScores = data.playerScores;
     updatePlayerScores();
 
-    $('p-answer-area').hidden = false;
-    $('p-answer-text').textContent = data.answer;
+    // لا تظهر الإجابة للمتسابقين
+    $('p-answer-area').hidden = true;
     $('p-status').hidden = false;
     $('p-status-text').textContent = '⏭ تم تخطي السؤال';
     $('p-status').className = 'player-status info-status';
     $('p-buzzer-area').hidden = true;
 
-    announce('تم تخطي السؤال. الجواب: ' + data.answer);
+    announce('تم تخطي السؤال');
 
     if (data.isGameOver) return;
 

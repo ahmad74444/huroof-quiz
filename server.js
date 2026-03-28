@@ -239,13 +239,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ===== Host Shows Answer (send to all) =====
+    // ===== Host Shows Answer (host only) =====
     socket.on('show-answer', () => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
 
-        // إرسال الإجابة للجميع (المضيف والمتسابقين)
-        io.to(socket.roomCode).emit('answer-revealed', {
+        // إرسال الإجابة للمضيف فقط - لا تظهر للمتسابقين
+        socket.emit('answer-revealed', {
             answer: room.currentAnswer
         });
     });
@@ -267,7 +267,6 @@ io.on('connection', (socket) => {
                 currentSection: 1,
                 playerId: winnerId,
                 playerName: room.playerScores[winnerId]?.name || 'متسابق',
-                answer: room.currentAnswer,
                 playerScores: room.playerScores,
                 choosingPlayerId: winnerId
             });
@@ -288,7 +287,6 @@ io.on('connection', (socket) => {
                 currentSection: 2,
                 team: winningTeam,
                 teamName: winningTeam === 1 ? room.team1.name : room.team2.name,
-                answer: room.currentAnswer,
                 team1Score: room.team1.score,
                 team2Score: room.team2.score,
                 choosingTeam: winningTeam,
@@ -310,7 +308,6 @@ io.on('connection', (socket) => {
             const remainingPlayers = room.players.filter(p => !room.secondChanceExcluded.includes(p.id));
             if (remainingPlayers.length === 0) {
                 io.to(socket.roomCode).emit('both-wrong', {
-                    answer: room.currentAnswer,
                     playerScores: room.playerScores,
                     currentSection: 1
                 });
@@ -338,7 +335,6 @@ io.on('connection', (socket) => {
             } else {
                 const isGameOver = room.questionCount >= room.maxQuestions;
                 io.to(socket.roomCode).emit('both-wrong', {
-                    answer: room.currentAnswer,
                     team1Score: room.team1.score,
                     team2Score: room.team2.score,
                     currentSection: 2,
@@ -356,7 +352,6 @@ io.on('connection', (socket) => {
         const isGameOver = room.currentSection === 2 && room.questionCount >= room.maxQuestions;
 
         io.to(socket.roomCode).emit('question-skipped', {
-            answer: room.currentAnswer,
             team1Score: room.team1.score,
             team2Score: room.team2.score,
             playerScores: room.playerScores,
