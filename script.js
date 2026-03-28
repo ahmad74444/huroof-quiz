@@ -475,9 +475,12 @@ function updateAllScoreDisplays() {
     }
 }
 
-function getPlayerRanking() {
-    return Object.values(state.playerScores)
-        .sort((a, b) => b.score - a.score);
+function getPlayerRanking(onlyWithPoints = false) {
+    let players = Object.values(state.playerScores);
+    if (onlyWithPoints) {
+        players = players.filter(p => p.score > 0);
+    }
+    return players.sort((a, b) => b.score - a.score);
 }
 
 // ===== Letter Grid =====
@@ -914,13 +917,14 @@ function endGame() {
     socket.emit('end-game');
 
     if (state.currentSection === 1) {
-        const sorted = getPlayerRanking();
+        // إظهار الفائزين فقط (من لديهم نقاط > 0)
+        const sorted = getPlayerRanking(true);
         $('team-results-area').hidden = true;
         const rankArea = $('ranking-list-area');
         rankArea.hidden = false;
 
         if (sorted.length === 0) {
-            rankArea.innerHTML = '<p>لا توجد نتائج</p>';
+            rankArea.innerHTML = '<p>لا يوجد فائزون</p>';
         } else {
             const medals = ['\ud83e\udd47', '\ud83e\udd48', '\ud83e\udd49'];
             rankArea.innerHTML = sorted.map((p, i) =>
@@ -936,9 +940,7 @@ function endGame() {
         $('results-subtitle').textContent = 'القسم الأول: المسابقة العامة';
         $('results-icon').textContent = '\ud83c\udfc6';
 
-        // Play win sound for ending general section
-        playWinnerSound();
-        socket.emit('play-sound', { sound: 'win' });
+        // لا يتم تشغيل صوت الفوز تلقائياً - المسؤول يضغط على المؤثر الصوتي يدوياً
     } else {
         $('team-results-area').hidden = false;
         $('ranking-list-area').hidden = true;
@@ -974,9 +976,7 @@ function endGame() {
         $('results-subtitle').textContent = subtitle;
         $('results-icon').textContent = icon;
 
-        playApplauseSound();
-        playWinnerSound();
-        socket.emit('play-sound', { sound: 'win' });
+        // لا يتم تشغيل صوت الفوز تلقائياً - المسؤول يضغط على المؤثر الصوتي يدوياً
     }
 
     showScreen('results');

@@ -239,13 +239,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ===== Host Shows Answer (host only) =====
+    // ===== Host Shows Answer (send to all) =====
     socket.on('show-answer', () => {
         const room = rooms[socket.roomCode];
         if (!room || room.host !== socket.id) return;
 
-        // Only send to host, NOT to players
-        socket.emit('answer-revealed', {
+        // إرسال الإجابة للجميع (المضيف والمتسابقين)
+        io.to(socket.roomCode).emit('answer-revealed', {
             answer: room.currentAnswer
         });
     });

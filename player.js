@@ -599,21 +599,29 @@ socket.on('game-ended', ({ currentSection, team1Name, team2Name, team1Score, tea
         const rankArea = $('p-ranking-list-area');
         rankArea.hidden = false;
 
-        const sorted = Object.values(playerScores).sort((a, b) => b.score - a.score);
-        const medals = ['\ud83e\udd47', '\ud83e\udd48', '\ud83e\udd49'];
-        rankArea.innerHTML = sorted.map((p, i) =>
-            `<div class="ranking-item ${i === 0 ? 'ranking-first' : ''}">
-                <span class="ranking-position">${medals[i] || (i + 1)}</span>
-                <span class="ranking-name">${p.name}</span>
-                <span class="ranking-score">${p.score} نقاط</span>
-            </div>`
-        ).join('');
+        // إظهار الفائزين فقط (من لديهم نقاط > 0)
+        const sorted = Object.values(playerScores)
+            .filter(p => p.score > 0)
+            .sort((a, b) => b.score - a.score);
+
+        if (sorted.length === 0) {
+            rankArea.innerHTML = '<p style="text-align:center; padding:2rem;">لا يوجد فائزون</p>';
+        } else {
+            const medals = ['\ud83e\udd47', '\ud83e\udd48', '\ud83e\udd49'];
+            rankArea.innerHTML = sorted.map((p, i) =>
+                `<div class="ranking-item ${i === 0 ? 'ranking-first' : ''}">
+                    <span class="ranking-position">${medals[i] || (i + 1)}</span>
+                    <span class="ranking-name">${p.name}</span>
+                    <span class="ranking-score">${p.score} نقاط</span>
+                </div>`
+            ).join('');
+        }
 
         $('p-results-title').textContent = 'انتهت المسابقة';
         $('p-results-subtitle').textContent = 'القسم الأول: المسابقة العامة';
         $('p-results-icon').textContent = '\ud83c\udfc6';
 
-        announce('انتهت المسابقة! ' + (sorted.length > 0 ? `الفائز: ${sorted[0].name}` : ''));
+        announce('انتهت المسابقة! ' + (sorted.length > 0 ? `الفائز: ${sorted[0].name}` : 'لا يوجد فائزون'));
     } else {
         $('p-team-results-area').hidden = false;
         $('p-ranking-list-area').hidden = true;
